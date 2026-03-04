@@ -11,7 +11,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 /**
  * Capture the user's full interactive shell PATH by spawning a login shell.
@@ -46,6 +46,7 @@ export function captureUserShellPath(): string {
  */
 export function buildFallbackPath(): string {
   const home = homedir();
+  const separator = process.platform === "win32" ? ";" : ":";
   const candidates = [
     // Standard system paths
     "/opt/homebrew/bin",
@@ -96,7 +97,7 @@ export function buildFallbackPath(): string {
     } catch { /* ignore */ }
   }
 
-  return [...new Set(candidates.filter((dir) => existsSync(dir)))].join(":");
+  return [...new Set(candidates.filter((dir) => existsSync(dir)))].join(separator);
 }
 
 // ─── Enriched PATH (cached) ───────────────────────────────────────────────────
@@ -113,9 +114,10 @@ export function getEnrichedPath(): string {
 
   const currentPath = process.env.PATH || "";
   const userPath = captureUserShellPath();
+  const separator = process.platform === "win32" ? ";" : ":";
 
   // Merge: user shell PATH first (takes precedence), then current process PATH
-  const allDirs = [...userPath.split(":"), ...currentPath.split(":")];
+  const allDirs = [...userPath.split(separator), ...currentPath.split(separator)];
   const seen = new Set<string>();
   const deduped: string[] = [];
   for (const dir of allDirs) {
@@ -125,7 +127,7 @@ export function getEnrichedPath(): string {
     }
   }
 
-  _cachedPath = deduped.join(":");
+  _cachedPath = deduped.join(separator);
   return _cachedPath;
 }
 
@@ -141,18 +143,21 @@ export function _resetPathCache(): void {
  * Returns null if the binary is not found anywhere.
  */
 export function resolveBinary(name: string): string | null {
-  if (name.startsWith("/")) {
+  if (isAbsolute(name)) {
     return existsSync(name) ? name : null;
   }
 
   const enrichedPath = getEnrichedPath();
+  const isWindows = process.platform === "win32";
+  const cmd = isWindows ? "where" : "which";
   try {
-    const resolved = execSync(`which ${name.replace(/[^a-zA-Z0-9._@/-]/g, "")}`, {
+    const output = execSync(`${cmd} ${name.replace(/[^a-zA-Z0-9._@/-]/g, "")}`, {
 
       encoding: "utf-8",
       timeout: 5_000,
       env: { ...process.env, PATH: enrichedPath },
     }).trim();
+    const resolved = output.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim() || "";
     return resolved || null;
   } catch {
     return null;

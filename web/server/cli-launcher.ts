@@ -743,7 +743,8 @@ export class CliLauncher {
       const binaryDir = resolve(binary, "..");
       const siblingNode = join(binaryDir, "node");
       const enrichedPath = getEnrichedPath();
-      const spawnPath = [binaryDir, ...enrichedPath.split(":")].filter(Boolean).join(":");
+      const separator = process.platform === "win32" ? ";" : ":";
+      const spawnPath = [binaryDir, ...enrichedPath.split(separator)].filter(Boolean).join(separator);
 
       if (existsSync(siblingNode)) {
         let codexScript: string;
@@ -969,7 +970,8 @@ export class CliLauncher {
       const binaryDir = resolve(binary, "..");
       const siblingNode = join(binaryDir, "node");
       const enrichedPath = getEnrichedPath();
-      const spawnPath = [binaryDir, ...enrichedPath.split(":")].filter(Boolean).join(":");
+      const separator = process.platform === "win32" ? ";" : ":";
+      const spawnPath = [binaryDir, ...enrichedPath.split(separator)].filter(Boolean).join(separator);
 
       if (existsSync(siblingNode)) {
         let codexScript: string;

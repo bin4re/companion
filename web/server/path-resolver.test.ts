@@ -40,6 +40,10 @@ import {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const originalEnv = { ...process.env };
+const PATH_SEPARATOR = process.platform === "win32" ? ";" : ":";
+const LOOKUP_CMD = process.platform === "win32" ? "where" : "which";
+const joinPath = (...parts: string[]) => parts.join(PATH_SEPARATOR);
+const normalizePath = (value: string) => value.replace(/\\/g, "/");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -56,22 +60,22 @@ afterEach(() => {
 describe("captureUserShellPath", () => {
   it("extracts PATH from login shell output using sentinel markers", () => {
     mockExecSync.mockReturnValueOnce(
-      "___PATH_START___/usr/bin:/home/testuser/.nvm/versions/node/v20/bin:/home/testuser/.cargo/bin___PATH_END___\n",
+      `___PATH_START___${joinPath("/usr/bin", "/home/testuser/.nvm/versions/node/v20/bin", "/home/testuser/.cargo/bin")}___PATH_END___\n`,
     );
 
     const result = captureUserShellPath();
     expect(result).toBe(
-      "/usr/bin:/home/testuser/.nvm/versions/node/v20/bin:/home/testuser/.cargo/bin",
+      joinPath("/usr/bin", "/home/testuser/.nvm/versions/node/v20/bin", "/home/testuser/.cargo/bin"),
     );
   });
 
   it("handles noisy shell output (MOTD, warnings) before and after PATH", () => {
     mockExecSync.mockReturnValueOnce(
-      "Last login: Mon Jan 1\nWelcome!\n___PATH_START___/usr/local/bin:/usr/bin___PATH_END___\nbye\n",
+      `Last login: Mon Jan 1\nWelcome!\n___PATH_START___${joinPath("/usr/local/bin", "/usr/bin")}___PATH_END___\nbye\n`,
     );
 
     const result = captureUserShellPath();
-    expect(result).toBe("/usr/local/bin:/usr/bin");
+    expect(result).toBe(joinPath("/usr/local/bin", "/usr/bin"));
   });
 
   it("falls back to buildFallbackPath when shell sourcing fails", () => {
@@ -142,59 +146,62 @@ describe("buildFallbackPath", () => {
 
   it("includes ~/.local/bin for claude CLI", () => {
     mockExistsSync.mockImplementation((p: string) =>
-      p === "/home/testuser/.local/bin" || p === "/usr/bin",
+      normalizePath(p) === "/home/testuser/.local/bin" || normalizePath(p) === "/usr/bin",
     );
 
     const result = buildFallbackPath();
-    expect(result).toContain("/home/testuser/.local/bin");
+    expect(normalizePath(result)).toContain("/home/testuser/.local/bin");
   });
 
   it("includes ~/.bun/bin", () => {
     mockExistsSync.mockImplementation((p: string) =>
-      p === "/home/testuser/.bun/bin" || p === "/usr/bin",
+      normalizePath(p) === "/home/testuser/.bun/bin" || normalizePath(p) === "/usr/bin",
     );
 
     const result = buildFallbackPath();
-    expect(result).toContain("/home/testuser/.bun/bin");
+    expect(normalizePath(result)).toContain("/home/testuser/.bun/bin");
   });
 
   it("includes ~/.cargo/bin for Rust tools", () => {
     mockExistsSync.mockImplementation((p: string) =>
-      p === "/home/testuser/.cargo/bin" || p === "/usr/bin",
+      normalizePath(p) === "/home/testuser/.cargo/bin" || normalizePath(p) === "/usr/bin",
     );
 
     const result = buildFallbackPath();
-    expect(result).toContain("/home/testuser/.cargo/bin");
+    expect(normalizePath(result)).toContain("/home/testuser/.cargo/bin");
   });
 
   it("probes nvm versions directory and includes all version bins", () => {
     // Ensure NVM_DIR is not set so the code falls back to ~/.nvm
     delete process.env.NVM_DIR;
     mockExistsSync.mockImplementation((p: string) => {
-      if (p === "/home/testuser/.nvm/versions/node") return true;
-      if (p.includes(".nvm/versions/node/v") && p.endsWith("/bin")) return true;
-      if (p === "/usr/bin") return true;
+      const normalized = normalizePath(p);
+      if (normalized === "/home/testuser/.nvm/versions/node") return true;
+      if (normalized.includes(".nvm/versions/node/v") && normalized.endsWith("/bin")) return true;
+      if (normalized === "/usr/bin") return true;
       return false;
     });
     mockReaddirSync.mockReturnValue(["v18.20.0", "v22.17.0"] as any);
 
     const result = buildFallbackPath();
-    expect(result).toContain("/home/testuser/.nvm/versions/node/v18.20.0/bin");
-    expect(result).toContain("/home/testuser/.nvm/versions/node/v22.17.0/bin");
+    const normalized = normalizePath(result);
+    expect(normalized).toContain("/home/testuser/.nvm/versions/node/v18.20.0/bin");
+    expect(normalized).toContain("/home/testuser/.nvm/versions/node/v22.17.0/bin");
   });
 
   it("uses NVM_DIR env var when set", () => {
     process.env.NVM_DIR = "/custom/nvm";
     mockExistsSync.mockImplementation((p: string) => {
-      if (p === "/custom/nvm/versions/node") return true;
-      if (p.includes("/custom/nvm/versions/node/v") && p.endsWith("/bin"))
+      const normalized = normalizePath(p);
+      if (normalized === "/custom/nvm/versions/node") return true;
+      if (normalized.includes("/custom/nvm/versions/node/v") && normalized.endsWith("/bin"))
         return true;
       return false;
     });
     mockReaddirSync.mockReturnValue(["v20.0.0"] as any);
 
     const result = buildFallbackPath();
-    expect(result).toContain("/custom/nvm/versions/node/v20.0.0/bin");
+    expect(normalizePath(result)).toContain("/custom/nvm/versions/node/v20.0.0/bin");
   });
 
   it("excludes directories that don't exist", () => {
@@ -209,7 +216,7 @@ describe("buildFallbackPath", () => {
     mockReaddirSync.mockReturnValue([] as any);
 
     const result = buildFallbackPath();
-    const dirs = result.split(":");
+    const dirs = result.split(PATH_SEPARATOR);
     expect(dirs.length).toBe(new Set(dirs).size);
   });
 });
@@ -218,10 +225,10 @@ describe("buildFallbackPath", () => {
 
 describe("getEnrichedPath", () => {
   it("merges user shell PATH with current process PATH", () => {
-    process.env.PATH = "/usr/bin:/bin";
+    process.env.PATH = joinPath("/usr/bin", "/bin");
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/home/testuser/.cargo/bin___PATH_END___\n";
+        return `___PATH_START___${joinPath("/usr/bin", "/home/testuser/.cargo/bin")}___PATH_END___\n`;
       }
       return "";
     });
@@ -233,16 +240,16 @@ describe("getEnrichedPath", () => {
   });
 
   it("deduplicates entries from both PATHs", () => {
-    process.env.PATH = "/usr/bin:/bin:/usr/local/bin";
+    process.env.PATH = joinPath("/usr/bin", "/bin", "/usr/local/bin");
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/usr/local/bin:/home/testuser/.volta/bin___PATH_END___\n";
+        return `___PATH_START___${joinPath("/usr/bin", "/usr/local/bin", "/home/testuser/.volta/bin")}___PATH_END___\n`;
       }
       return "";
     });
 
     const result = getEnrichedPath();
-    const dirs = result.split(":");
+    const dirs = result.split(PATH_SEPARATOR);
     expect(dirs.length).toBe(new Set(dirs).size);
     // /usr/bin should appear exactly once
     expect(dirs.filter((d) => d === "/usr/bin").length).toBe(1);
@@ -268,16 +275,16 @@ describe("getEnrichedPath", () => {
 
   it("gives user shell PATH precedence over process PATH", () => {
     // User's shell has /opt/homebrew/bin first, process PATH has /usr/bin first
-    process.env.PATH = "/usr/bin:/bin";
+    process.env.PATH = joinPath("/usr/bin", "/bin");
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n";
+        return `___PATH_START___${joinPath("/opt/homebrew/bin", "/usr/bin")}___PATH_END___\n`;
       }
       return "";
     });
 
     const result = getEnrichedPath();
-    const dirs = result.split(":");
+    const dirs = result.split(PATH_SEPARATOR);
     expect(dirs.indexOf("/opt/homebrew/bin")).toBeLessThan(
       dirs.indexOf("/bin"),
     );
@@ -289,22 +296,22 @@ describe("getEnrichedPath", () => {
 describe("resolveBinary", () => {
   beforeEach(() => {
     // Seed getEnrichedPath cache to avoid shell-sourcing side effects
-    process.env.PATH = "/usr/bin:/bin";
+    process.env.PATH = joinPath("/usr/bin", "/bin");
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/usr/local/bin___PATH_END___\n";
+        return `___PATH_START___${joinPath("/usr/bin", "/usr/local/bin")}___PATH_END___\n`;
       }
       throw new Error("not found");
     });
   });
 
-  it("returns absolute path when binary is found via which", () => {
+  it("returns absolute path when binary is found via lookup command", () => {
     _resetPathCache();
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
         return "___PATH_START___/usr/bin___PATH_END___\n";
       }
-      if (typeof cmd === "string" && cmd.startsWith("which claude")) {
+      if (typeof cmd === "string" && cmd.startsWith(`${LOOKUP_CMD} claude`)) {
         return "/home/testuser/.local/bin/claude\n";
       }
       throw new Error("not found");
@@ -325,13 +332,13 @@ describe("resolveBinary", () => {
     expect(resolveBinary("nonexistent")).toBeNull();
   });
 
-  it("passes enriched PATH to which command", () => {
+  it("passes enriched PATH to lookup command", () => {
     _resetPathCache();
     mockExecSync.mockImplementation((cmd: string, opts?: any) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/home/testuser/.special/bin___PATH_END___\n";
+        return `___PATH_START___${joinPath("/usr/bin", "/home/testuser/.special/bin")}___PATH_END___\n`;
       }
-      if (typeof cmd === "string" && cmd.startsWith("which")) {
+      if (typeof cmd === "string" && cmd.startsWith(LOOKUP_CMD)) {
         // Verify enriched PATH is passed in env
         expect(opts?.env?.PATH).toContain("/home/testuser/.special/bin");
         return "/home/testuser/.special/bin/mytool\n";
@@ -360,7 +367,7 @@ describe("getServicePath", () => {
     process.env.PATH = "/usr/bin";
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/opt/homebrew/bin___PATH_END___\n";
+        return `___PATH_START___${joinPath("/usr/bin", "/opt/homebrew/bin")}___PATH_END___\n`;
       }
       return "";
     });
@@ -378,7 +385,7 @@ describe("_resetPathCache", () => {
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
         callCount++;
-        return `___PATH_START___/usr/bin:/call-${callCount}___PATH_END___\n`;
+        return `___PATH_START___${joinPath("/usr/bin", `/call-${callCount}`)}___PATH_END___\n`;
       }
       return "";
     });

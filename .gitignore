@@ -15,3 +15,6 @@ docs/mocks/
 docs/repo-only/
 scripts/test-codex-*.ts
 web/dev-dist/
+.tmp/
+web/.tmp/
+web/.bun/

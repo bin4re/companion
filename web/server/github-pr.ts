@@ -44,7 +44,8 @@ let _ghAvailable: boolean | null = null;
 export function isGhAvailable(): boolean {
   if (_ghAvailable !== null) return _ghAvailable;
   try {
-    execSync("which gh", { stdio: "pipe", timeout: 5_000 });
+    const cmd = process.platform === "win32" ? "where gh" : "which gh";
+    execSync(cmd, { stdio: "pipe", timeout: 5_000 });
     _ghAvailable = true;
   } catch {
     _ghAvailable = false;

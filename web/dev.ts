@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const webDir = resolve(__dirname);
+const bunExec = process.execPath || "bun";
 
 const procs: Subprocess[] = [];
 let shuttingDown = false;
@@ -60,7 +61,7 @@ process.on("SIGTERM", () => cleanup(0));
 
 async function start() {
   // ── Backend (Hono on Bun) ────────────────────────────────────────
-  const backend = spawn(["bun", "--watch", "server/index.ts"], {
+  const backend = spawn([bunExec, "--watch", "server/index.ts"], {
     cwd: webDir,
     stdout: "pipe",
     stderr: "pipe",
@@ -97,7 +98,7 @@ async function start() {
   }
 
   // ── Vite (frontend HMR) ─────────────────────────────────────────
-  const vite = spawn(["bun", "run", "dev:vite"], {
+  const vite = spawn([bunExec, "run", "dev:vite"], {
     cwd: webDir,
     stdout: "pipe",
     stderr: "pipe",
