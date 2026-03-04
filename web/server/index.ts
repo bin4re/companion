@@ -1,5 +1,22 @@
 process.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
 
+if (process.platform === "win32") {
+  const cwd = process.cwd();
+  let normalizedCwd = cwd;
+  if (cwd.startsWith("\\\\?\\UNC\\")) {
+    normalizedCwd = `\\\\${cwd.slice("\\\\?\\UNC\\".length)}`;
+  } else if (cwd.startsWith("\\\\?\\")) {
+    normalizedCwd = cwd.slice("\\\\?\\".length);
+  }
+  if (normalizedCwd !== cwd) {
+    try {
+      process.chdir(normalizedCwd);
+    } catch {
+      // Best effort: keep running even if cwd cannot be normalized.
+    }
+  }
+}
+
 // Enrich process PATH at startup so binary resolution and `which` calls can find
 // binaries installed via version managers (nvm, volta, fnm, etc.).
 // Critical when running as a launchd/systemd service with a restricted PATH.

@@ -48,6 +48,13 @@ function shellEscapeArg(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function normalizeHostPath(path: string): string {
+  if (process.platform !== "win32") return path;
+  if (path.startsWith("\\\\?\\UNC\\")) return `\\\\${path.slice("\\\\?\\UNC\\".length)}`;
+  if (path.startsWith("\\\\?\\")) return path.slice("\\\\?\\".length);
+  return path;
+}
+
 export function createRoutes(
   launcher: CliLauncher,
   wsBridge: WsBridge,
@@ -1585,7 +1592,21 @@ export function createRoutes(
     return c.json(images);
   });
 
-  registerFsRoutes(api);
+  registerFsRoutes(api, {
+    allowedBases: () => {
+      const bases = [
+        normalizeHostPath(homedir()),
+        normalizeHostPath(process.cwd()),
+      ];
+      for (const session of launcher.listSessions()) {
+        const cwd = session.cwd ? normalizeHostPath(session.cwd) : "";
+        if (cwd && existsSync(cwd)) {
+          bases.push(cwd);
+        }
+      }
+      return [...new Set(bases)];
+    },
+  });
   registerEnvRoutes(api, { webDir: WEB_DIR });
 
   registerPromptRoutes(api);

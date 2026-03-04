@@ -5,6 +5,16 @@ import { DiffViewer } from "./DiffViewer.js";
 
 type FileChangeStatus = "created" | "updated" | "deleted";
 
+function normalizePathForCompare(path: string): string {
+  let normalized = path.replace(/\\/g, "/");
+  if (normalized.startsWith("//?/UNC/")) {
+    normalized = `//${normalized.slice("//?/UNC/".length)}`;
+  } else if (normalized.startsWith("//?/")) {
+    normalized = normalized.slice("//?/".length);
+  }
+  return normalized;
+}
+
 function FileStatusIcon({ status }: { status: FileChangeStatus }) {
   if (status === "created") {
     return (
@@ -54,12 +64,21 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
     let cancelled = false;
     api.getChangedFiles(cwd, diffBase).then(({ files }) => {
       if (cancelled) return;
-      const cwdPrefix = `${cwd}/`;
+      const normalizedCwd = normalizePathForCompare(cwd).replace(/\/+$/, "");
+      const cwdPrefix = `${normalizedCwd}/`;
       const result = files
-        .filter((f) => f.path === cwd || f.path.startsWith(cwdPrefix))
+        .filter((f) => {
+          const normalizedPath = normalizePathForCompare(f.path);
+          return normalizedPath === normalizedCwd || normalizedPath.startsWith(cwdPrefix);
+        })
         .map((f) => ({
           abs: f.path,
-          rel: f.path.startsWith(cwdPrefix) ? f.path.slice(cwdPrefix.length) : f.path,
+          rel: (() => {
+            const normalizedPath = normalizePathForCompare(f.path);
+            return normalizedPath.startsWith(cwdPrefix)
+              ? normalizedPath.slice(cwdPrefix.length)
+              : normalizedPath;
+          })(),
           status: (f.status === "A" || f.status === "?" ? "created" : f.status === "D" ? "deleted" : "updated") as FileChangeStatus,
         }))
         .sort((a, b) => a.rel.localeCompare(b.rel));
@@ -122,7 +141,11 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
 
   const selectedRelPath = useMemo(() => {
     if (!selectedFile || !cwd) return selectedFile;
-    return selectedFile.startsWith(cwd + "/") ? selectedFile.slice(cwd.length + 1) : selectedFile;
+    const normalizedCwd = normalizePathForCompare(cwd).replace(/\/+$/, "");
+    const normalizedSelected = normalizePathForCompare(selectedFile);
+    return normalizedSelected.startsWith(`${normalizedCwd}/`)
+      ? normalizedSelected.slice(normalizedCwd.length + 1)
+      : normalizedSelected;
   }, [selectedFile, cwd]);
 
   if (!cwd) {

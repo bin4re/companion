@@ -10,6 +10,13 @@ import { validatePermission } from "./ai-validator.js";
 import { getSettings } from "./settings-manager.js";
 import { getEffectiveAiValidation } from "./ai-validation-settings.js";
 
+function normalizeHostPath(path: string): string {
+  if (process.platform !== "win32") return path;
+  if (path.startsWith("\\\\?\\UNC\\")) return `\\\\${path.slice("\\\\?\\UNC\\".length)}`;
+  if (path.startsWith("\\\\?\\")) return path.slice("\\\\?\\".length);
+  return path;
+}
+
 export interface CodexAttachDeps {
   persistSession: (session: Session) => void;
   refreshGitInfo: (
@@ -30,11 +37,17 @@ export function attachCodexAdapterHandlers(
 ): void {
   adapter.onBrowserMessage((msg) => {
     if (msg.type === "session_init") {
-      session.state = { ...session.state, ...msg.session, backend_type: "codex" };
+      const sessionPatch = msg.session.cwd
+        ? { ...msg.session, cwd: normalizeHostPath(msg.session.cwd) }
+        : msg.session;
+      session.state = { ...session.state, ...sessionPatch, backend_type: "codex" };
       deps.refreshGitInfo(session, { notifyPoller: true });
       deps.persistSession(session);
     } else if (msg.type === "session_update") {
-      session.state = { ...session.state, ...msg.session, backend_type: "codex" };
+      const sessionPatch = msg.session.cwd
+        ? { ...msg.session, cwd: normalizeHostPath(msg.session.cwd) }
+        : msg.session;
+      session.state = { ...session.state, ...sessionPatch, backend_type: "codex" };
       deps.refreshGitInfo(session, { notifyPoller: true });
       deps.persistSession(session);
     } else if (msg.type === "status_change") {
@@ -105,7 +118,7 @@ export function attachCodexAdapterHandlers(
       deps.onCLISessionId(session.id, meta.cliSessionId);
     }
     if (meta.model) session.state.model = meta.model;
-    if (meta.cwd) session.state.cwd = meta.cwd;
+    if (meta.cwd) session.state.cwd = normalizeHostPath(meta.cwd);
     session.state.backend_type = "codex";
     deps.refreshGitInfo(session, { broadcastUpdate: true, notifyPoller: true });
     deps.persistSession(session);

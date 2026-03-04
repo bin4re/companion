@@ -13,12 +13,25 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
+function normalizeExecCwd(cwd: string): string {
+  if (process.platform !== "win32") return cwd;
+  if (cwd.startsWith("\\\\?\\UNC\\")) return `\\\\${cwd.slice("\\\\?\\UNC\\".length)}`;
+  if (cwd.startsWith("\\\\?\\")) return cwd.slice("\\\\?\\".length);
+  return cwd;
+}
+
 /**
  * Capture the user's full interactive shell PATH by spawning a login shell.
  * This picks up all version manager initializations (nvm, fnm, volta, mise, etc.).
  * Falls back to probing common directories if shell sourcing fails.
  */
 export function captureUserShellPath(): string {
+  if (process.platform === "win32") {
+    // Windows doesn't use login shells like bash/zsh for PATH hydration.
+    // Prefer inherited PATH and fall back to probing if it is unexpectedly empty.
+    return process.env.PATH || buildFallbackPath();
+  }
+
   try {
     const shell = process.env.SHELL || "/bin/bash";
     const captured = execSync(
@@ -27,6 +40,8 @@ export function captureUserShellPath(): string {
         encoding: "utf-8",
         timeout: 10_000,
         env: { HOME: homedir(), USER: process.env.USER, SHELL: shell },
+        cwd: normalizeExecCwd(process.cwd()),
+        stdio: ["ignore", "pipe", "pipe"],
       },
     );
     const match = captured.match(/___PATH_START___(.+)___PATH_END___/);
@@ -156,6 +171,8 @@ export function resolveBinary(name: string): string | null {
       encoding: "utf-8",
       timeout: 5_000,
       env: { ...process.env, PATH: enrichedPath },
+      cwd: normalizeExecCwd(process.cwd()),
+      stdio: ["ignore", "pipe", "pipe"],
     }).trim();
     const resolved = output.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim() || "";
     return resolved || null;

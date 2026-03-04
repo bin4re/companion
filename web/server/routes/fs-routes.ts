@@ -1,26 +1,49 @@
 import { execSync } from "node:child_process";
 import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import type { Hono } from "hono";
+
+const QUIET_STDIO: ["ignore", "pipe", "pipe"] = ["ignore", "pipe", "pipe"];
+
+function stripWindowsLongPathPrefix(path: string): string {
+  if (process.platform !== "win32") return path;
+  if (path.startsWith("\\\\?\\UNC\\")) return `\\\\${path.slice("\\\\?\\UNC\\".length)}`;
+  if (path.startsWith("\\\\?\\")) return path.slice("\\\\?\\".length);
+  return path;
+}
+
+function normalizeAbsolutePath(raw: string): string {
+  return stripWindowsLongPathPrefix(resolve(raw));
+}
 
 /** Ensure a resolved path is within one of the allowed base directories.
  *  Returns the resolved absolute path, or null if it escapes all bases. */
 function guardPath(raw: string, allowedBases: string[]): string | null {
-  const abs = resolve(raw);
-  for (const base of allowedBases) {
-    if (abs === base || abs.startsWith(base + "/")) return abs;
+  const abs = normalizeAbsolutePath(raw);
+  const absComparable = process.platform === "win32" ? abs.toLowerCase() : abs;
+  for (const baseRaw of allowedBases) {
+    const base = normalizeAbsolutePath(baseRaw).replace(/[\\/]+$/, "");
+    const baseComparable = process.platform === "win32" ? base.toLowerCase() : base;
+    if (absComparable === baseComparable || absComparable.startsWith(baseComparable + sep)) {
+      return abs;
+    }
   }
   return null;
 }
 
-function shellEscapeArg(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
+function sanitizeGitRef(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._@/-]/g, "");
 }
 
 function execCaptureStdout(
   command: string,
-  options: { cwd: string; encoding: "utf-8"; timeout: number },
+  options: {
+    cwd: string;
+    encoding: "utf-8";
+    timeout: number;
+    stdio: ["ignore", "pipe", "pipe"];
+  },
 ): string {
   try {
     return execSync(command, options);
@@ -35,7 +58,17 @@ function execCaptureStdout(
 }
 
 function resolveBranchDiffBases(repoRoot: string): string[] {
-  const options = { cwd: repoRoot, encoding: "utf-8", timeout: 5000 } as const;
+  const options: {
+    cwd: string;
+    encoding: "utf-8";
+    timeout: number;
+    stdio: ["ignore", "pipe", "pipe"];
+  } = {
+    cwd: repoRoot,
+    encoding: "utf-8",
+    timeout: 5000,
+    stdio: QUIET_STDIO,
+  };
 
   try {
     const originHead = execSync("git symbolic-ref refs/remotes/origin/HEAD", options).trim();
@@ -58,10 +91,17 @@ function resolveBranchDiffBases(repoRoot: string): string[] {
   return ["main"];
 }
 
-export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }): void {
+export function registerFsRoutes(
+  api: Hono,
+  opts?: { allowedBases?: string[] | (() => string[]) },
+): void {
   // Allowed base directories for filesystem access.
   // Requests must target paths under the user's home directory or process cwd.
-  const allowedBases = () => opts?.allowedBases ?? [homedir(), process.cwd()];
+  const allowedBases = () => {
+    if (Array.isArray(opts?.allowedBases)) return opts.allowedBases;
+    if (typeof opts?.allowedBases === "function") return opts.allowedBases();
+    return [homedir(), process.cwd()];
+  };
 
   api.get("/fs/list", async (c) => {
     const rawPath = c.req.query("path") || homedir();
@@ -91,14 +131,22 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
   });
 
   api.get("/fs/home", (c) => {
-    const home = homedir();
-    const cwd = process.cwd();
+    const home = normalizeAbsolutePath(homedir());
+    const cwd = normalizeAbsolutePath(process.cwd());
+    const cwdComparable = process.platform === "win32" ? cwd.toLowerCase() : cwd;
     // Only report cwd if the user launched companion from a real project directory
     // (not from the package root or the home directory itself)
-    const packageRoot = process.env.__COMPANION_PACKAGE_ROOT;
+    const packageRoot = process.env.__COMPANION_PACKAGE_ROOT
+      ? normalizeAbsolutePath(process.env.__COMPANION_PACKAGE_ROOT)
+      : null;
+    const packageRootComparable = packageRoot
+      ? (process.platform === "win32" ? packageRoot.toLowerCase() : packageRoot)
+      : null;
+    const isInsidePackageRoot = !!packageRootComparable
+      && (cwdComparable === packageRootComparable || cwdComparable.startsWith(packageRootComparable + sep));
     const isProjectDir =
       cwd !== home &&
-      (!packageRoot || !cwd.startsWith(packageRoot));
+      !isInsidePackageRoot;
     return c.json({ home, cwd: isProjectDir ? cwd : home });
   });
 
@@ -226,16 +274,18 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
     const filePath = c.req.query("path");
     if (!filePath) return c.json({ error: "path required" }, 400);
     const base = c.req.query("base");
-    const absPath = resolve(filePath);
+    const absPath = normalizeAbsolutePath(filePath);
     try {
-      const repoRoot = execSync("git rev-parse --show-toplevel", {
+      const repoRoot = stripWindowsLongPathPrefix(execSync("git rev-parse --show-toplevel", {
         cwd: dirname(absPath),
         encoding: "utf-8",
         timeout: 5000,
-      }).trim();
+        stdio: QUIET_STDIO,
+      }).trim());
       const relPath = execSync(`git -C "${repoRoot}" ls-files --full-name -- "${absPath}"`, {
         encoding: "utf-8",
         timeout: 5000,
+        stdio: QUIET_STDIO,
       }).trim() || absPath;
 
       let diff = "";
@@ -248,6 +298,7 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
               cwd: repoRoot,
               encoding: "utf-8",
               timeout: 5000,
+              stdio: QUIET_STDIO,
             });
             break;
           } catch {
@@ -260,6 +311,7 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
             cwd: repoRoot,
             encoding: "utf-8",
             timeout: 5000,
+            stdio: QUIET_STDIO,
           });
         } catch {
           // HEAD may not exist in a fresh repo with no commits; fall through to untracked handling.
@@ -271,12 +323,14 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
           cwd: repoRoot,
           encoding: "utf-8",
           timeout: 5000,
+          stdio: QUIET_STDIO,
         }).trim();
         if (untracked) {
           diff = execCaptureStdout(`git diff --no-index -- /dev/null "${absPath}"`, {
             cwd: repoRoot,
             encoding: "utf-8",
             timeout: 5000,
+            stdio: QUIET_STDIO,
           });
         }
       }
@@ -295,13 +349,14 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
     const cwd = c.req.query("cwd");
     if (!cwd) return c.json({ error: "cwd required" }, 400);
     const base = c.req.query("base"); // "last-commit" | "default-branch" | undefined
-    const resolvedCwd = resolve(cwd);
+    const resolvedCwd = normalizeAbsolutePath(cwd);
     try {
-      const repoRoot = execSync("git rev-parse --show-toplevel", {
+      const repoRoot = stripWindowsLongPathPrefix(execSync("git rev-parse --show-toplevel", {
         cwd: resolvedCwd,
         encoding: "utf-8",
         timeout: 5000,
-      }).trim();
+        stdio: QUIET_STDIO,
+      }).trim());
 
       // Map from abs path → status ("A", "M", "D"). Later writes win, but "A" is preserved.
       const fileMap = new Map<string, string>();
@@ -330,9 +385,14 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
         // default-branch (or unset): committed changes on this branch vs origin base
         const diffBases = resolveBranchDiffBases(repoRoot);
         for (const b of diffBases) {
+          const safeRef = sanitizeGitRef(b);
+          if (!safeRef) continue;
           try {
-            applyNameStatus(execCaptureStdout(`git diff ${shellEscapeArg(b)}...HEAD --name-status`, {
-              cwd: repoRoot, encoding: "utf-8", timeout: 5000,
+            applyNameStatus(execCaptureStdout(`git diff ${safeRef}...HEAD --name-status`, {
+              cwd: repoRoot,
+              encoding: "utf-8",
+              timeout: 5000,
+              stdio: QUIET_STDIO,
             }));
             break;
           } catch { /* try next */ }
@@ -342,14 +402,20 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
       // Always include uncommitted changes (staged + unstaged vs HEAD)
       try {
         applyNameStatus(execCaptureStdout("git diff HEAD --name-status", {
-          cwd: repoRoot, encoding: "utf-8", timeout: 5000,
+          cwd: repoRoot,
+          encoding: "utf-8",
+          timeout: 5000,
+          stdio: QUIET_STDIO,
         }));
       } catch { /* fresh repo */ }
 
       // Always include untracked files not yet staged
       try {
         const untracked = execSync("git ls-files --others --exclude-standard", {
-          cwd: repoRoot, encoding: "utf-8", timeout: 5000,
+          cwd: repoRoot,
+          encoding: "utf-8",
+          timeout: 5000,
+          stdio: QUIET_STDIO,
         }).trim();
         for (const rel of untracked.split("\n")) {
           if (rel.trim()) {
@@ -370,16 +436,17 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
   api.get("/fs/claude-md", async (c) => {
     const cwd = c.req.query("cwd");
     if (!cwd) return c.json({ error: "cwd required" }, 400);
-    const resolvedCwd = resolve(cwd);
+    const resolvedCwd = normalizeAbsolutePath(cwd);
 
     // Find the git repo root so we can search upward from cwd.
     let repoRoot: string | null = null;
     try {
-      repoRoot = execSync("git rev-parse --show-toplevel", {
+      repoRoot = stripWindowsLongPathPrefix(execSync("git rev-parse --show-toplevel", {
         cwd: resolvedCwd,
         encoding: "utf-8",
         timeout: 3000,
-      }).trim();
+        stdio: QUIET_STDIO,
+      }).trim());
     } catch {
       // Not a git repo — only search the exact cwd
     }
@@ -419,16 +486,17 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
   api.get("/fs/claude-config", async (c) => {
     const cwd = c.req.query("cwd");
     if (!cwd) return c.json({ error: "cwd required" }, 400);
-    const resolvedCwd = resolve(cwd);
+    const resolvedCwd = normalizeAbsolutePath(cwd);
 
     // Find repo root
     let repoRoot: string | null = null;
     try {
-      repoRoot = execSync("git rev-parse --show-toplevel", {
+      repoRoot = stripWindowsLongPathPrefix(execSync("git rev-parse --show-toplevel", {
         cwd: resolvedCwd,
         encoding: "utf-8",
         timeout: 3000,
-      }).trim();
+        stdio: QUIET_STDIO,
+      }).trim());
     } catch {
       // Not a git repo
     }
@@ -583,12 +651,16 @@ export function registerFsRoutes(api: Hono, opts?: { allowedBases?: string[] }):
     if (!filePath || typeof content !== "string") {
       return c.json({ error: "path and content required" }, 400);
     }
-    const base = filePath.split("/").pop();
+    const base = filePath.split(/[\\/]/).pop();
     if (base !== "CLAUDE.md") {
       return c.json({ error: "Can only write CLAUDE.md files" }, 400);
     }
-    const absPath = resolve(filePath);
-    if (!absPath.endsWith("/CLAUDE.md") && !absPath.endsWith("/.claude/CLAUDE.md")) {
+    const absPath = normalizeAbsolutePath(filePath);
+    const normalizedForSuffixCheck = absPath.replace(/\\/g, "/");
+    if (
+      !normalizedForSuffixCheck.endsWith("/CLAUDE.md")
+      && !normalizedForSuffixCheck.endsWith("/.claude/CLAUDE.md")
+    ) {
       return c.json({ error: "Invalid CLAUDE.md path" }, 400);
     }
     try {

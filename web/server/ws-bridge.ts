@@ -57,6 +57,13 @@ import { validatePermission } from "./ai-validator.js";
 import { getSettings } from "./settings-manager.js";
 import { getEffectiveAiValidation } from "./ai-validation-settings.js";
 
+function normalizeHostPath(path: string): string {
+  if (process.platform !== "win32") return path;
+  if (path.startsWith("\\\\?\\UNC\\")) return `\\\\${path.slice("\\\\?\\UNC\\".length)}`;
+  if (path.startsWith("\\\\?\\")) return path.slice("\\\\?\\".length);
+  return path;
+}
+
 // ─── Bridge ───────────────────────────────────────────────────────────────────
 
 export class WsBridge {
@@ -167,6 +174,12 @@ export class WsBridge {
         ),
       };
       session.state.backend_type = session.backendType;
+      if (session.state.cwd) {
+        session.state.cwd = normalizeHostPath(session.state.cwd);
+      }
+      if (session.state.repo_root) {
+        session.state.repo_root = normalizeHostPath(session.state.repo_root);
+      }
       // Resolve git info for restored sessions (may have been persisted without it)
       resolveSessionGitInfo(session.id, session.state);
       this.sessions.set(p.id, session);
@@ -583,7 +596,7 @@ export class WsBridge {
       // For containerized sessions, the CLI reports /workspace as its cwd.
       // Keep the host path (set by markContainerized()) for correct project grouping.
       if (!session.state.is_containerized) {
-        session.state.cwd = msg.cwd;
+        session.state.cwd = normalizeHostPath(msg.cwd);
       }
       session.state.tools = msg.tools;
       session.state.permissionMode = msg.permissionMode;

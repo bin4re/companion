@@ -3,6 +3,17 @@ import { resolve } from "node:path";
 import type { SessionState } from "./session-types.js";
 import { containerManager } from "./container-manager.js";
 
+function stripWindowsLongPathPrefix(path: string): string {
+  if (process.platform !== "win32") return path;
+  if (path.startsWith("\\\\?\\UNC\\")) return `\\\\${path.slice("\\\\?\\UNC\\".length)}`;
+  if (path.startsWith("\\\\?\\")) return path.slice("\\\\?\\".length);
+  return path;
+}
+
+function normalizeCommandCwd(cwd: string): string {
+  return stripWindowsLongPathPrefix(resolve(cwd));
+}
+
 function shellEscapeSingle(value: string): string {
   return value.replace(/'/g, "'\\''");
 }
@@ -20,9 +31,10 @@ function runGitCommand(sessionId: string, state: SessionState, command: string):
   }
 
   return execSync(command, {
-    cwd: state.cwd,
+    cwd: normalizeCommandCwd(state.cwd),
     encoding: "utf-8",
     timeout: 3000,
+    stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 }
 
@@ -50,21 +62,21 @@ export function resolveSessionGitInfo(sessionId: string, state: SessionState): v
     git_behind: state.git_behind,
   };
   try {
-    state.git_branch = runGitCommand(sessionId, state, "git rev-parse --abbrev-ref HEAD 2>/dev/null");
+    state.git_branch = runGitCommand(sessionId, state, "git rev-parse --abbrev-ref HEAD");
 
     try {
-      const gitDir = runGitCommand(sessionId, state, "git rev-parse --git-dir 2>/dev/null");
-      state.is_worktree = gitDir.includes("/worktrees/");
+      const gitDir = runGitCommand(sessionId, state, "git rev-parse --git-dir");
+      state.is_worktree = gitDir.replace(/\\/g, "/").includes("/worktrees/");
     } catch {
       state.is_worktree = false;
     }
 
     try {
       if (state.is_worktree) {
-        const commonDir = runGitCommand(sessionId, state, "git rev-parse --git-common-dir 2>/dev/null");
-        state.repo_root = resolve(state.cwd, commonDir, "..");
+        const commonDir = runGitCommand(sessionId, state, "git rev-parse --git-common-dir");
+        state.repo_root = resolve(normalizeCommandCwd(state.cwd), commonDir, "..");
       } else {
-        state.repo_root = runGitCommand(sessionId, state, "git rev-parse --show-toplevel 2>/dev/null");
+        state.repo_root = runGitCommand(sessionId, state, "git rev-parse --show-toplevel");
       }
       state.repo_root = mapContainerPathToHost(sessionId, state, state.repo_root);
     } catch {
@@ -75,7 +87,7 @@ export function resolveSessionGitInfo(sessionId: string, state: SessionState): v
       const counts = runGitCommand(
         sessionId,
         state,
-        "git rev-list --left-right --count @{upstream}...HEAD 2>/dev/null",
+        "git rev-list --left-right --count @{upstream}...HEAD",
       );
       const [behind, ahead] = counts.split(/\s+/).map(Number);
       state.git_ahead = ahead || 0;
