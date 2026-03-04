@@ -27,6 +27,8 @@ beforeEach(() => {
     aiValidationEnabled: false,
     aiValidationAutoApprove: true,
     aiValidationAutoDeny: true,
+    terminalCustomShellEnabled: false,
+    terminalCustomShellExecutable: "",
     updateChannel: "stable",
     updatedAt: 0,
   });
@@ -61,6 +63,8 @@ describe("generateSessionTitle", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -102,6 +106,8 @@ describe("generateSessionTitle", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -172,6 +178,8 @@ describe("generateSessionTitle", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });

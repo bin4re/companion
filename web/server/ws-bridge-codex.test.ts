@@ -124,6 +124,8 @@ describe("attachCodexAdapterHandlers", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -879,6 +881,8 @@ describe("attachCodexAdapterHandlers", () => {
         aiValidationEnabled: true,
         aiValidationAutoApprove: true,
         aiValidationAutoDeny: true,
+        terminalCustomShellEnabled: false,
+        terminalCustomShellExecutable: "",
         updateChannel: "stable",
         updatedAt: 0,
       });
@@ -1046,6 +1050,8 @@ describe("attachCodexAdapterHandlers", () => {
         aiValidationEnabled: false,  // disabled
         aiValidationAutoApprove: true,
         aiValidationAutoDeny: true,
+        terminalCustomShellEnabled: false,
+        terminalCustomShellExecutable: "",
         updateChannel: "stable",
         updatedAt: 0,
       });
@@ -1083,6 +1089,8 @@ describe("attachCodexAdapterHandlers", () => {
         aiValidationEnabled: true,
         aiValidationAutoApprove: true,
         aiValidationAutoDeny: true,
+        terminalCustomShellEnabled: false,
+        terminalCustomShellExecutable: "",
         updateChannel: "stable",
         updatedAt: 0,
       });
@@ -1185,6 +1193,8 @@ describe("attachCodexAdapterHandlers", () => {
         aiValidationEnabled: true,
         aiValidationAutoApprove: false,  // disabled
         aiValidationAutoDeny: true,
+        terminalCustomShellEnabled: false,
+        terminalCustomShellExecutable: "",
         updateChannel: "stable",
         updatedAt: 0,
       });
@@ -1306,6 +1316,8 @@ describe("attachCodexAdapterHandlers", () => {
         aiValidationEnabled: true,
         aiValidationAutoApprove: true,
         aiValidationAutoDeny: false,  // disabled
+        terminalCustomShellEnabled: false,
+        terminalCustomShellExecutable: "",
         updateChannel: "stable",
         updatedAt: 0,
       });

@@ -107,6 +107,8 @@ beforeEach(() => {
     linearAutoTransition: false,
     linearAutoTransitionStateName: "",
     editorTabEnabled: false,
+    terminalCustomShellEnabled: false,
+    terminalCustomShellExecutable: "",
     updateChannel: "stable",
   });
   mockApi.updateSettings.mockResolvedValue({
@@ -116,6 +118,8 @@ beforeEach(() => {
     linearAutoTransition: false,
     linearAutoTransitionStateName: "",
     editorTabEnabled: false,
+    terminalCustomShellEnabled: false,
+    terminalCustomShellExecutable: "",
     updateChannel: "stable",
   });
   mockApi.forceCheckForUpdate.mockResolvedValue({
@@ -260,6 +264,131 @@ describe("SettingsPage", () => {
         anthropicModel: "claude-sonnet-4.6",
         editorTabEnabled: true,
       });
+    });
+  });
+
+  it("saves terminal shell settings", async () => {
+    render(<SettingsPage />);
+    await screen.findByText("Anthropic key configured");
+
+    fireEvent.click(screen.getByRole("button", { name: /Custom Shell executable/i }));
+    fireEvent.change(screen.getByLabelText("Shell executable path"), {
+      target: { value: "C:\\Program Files\\PowerShell\\7\\pwsh.exe" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save terminal shell" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateSettings).toHaveBeenCalledWith({
+        terminalCustomShellEnabled: true,
+        terminalCustomShellExecutable: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      });
+    });
+
+    expect(await screen.findByText("Terminal settings saved.")).toBeInTheDocument();
+  });
+
+  it("shows terminal placeholder example when custom shell path is empty", async () => {
+    render(<SettingsPage />);
+    await screen.findByText("Anthropic key configured");
+
+    const input = screen.getByLabelText("Shell executable path");
+    expect(input).toHaveAttribute("placeholder", "Example: C:\\ProgramFiles\\PowerShell\\7\\pwsh.exe");
+    expect(input).toHaveClass("placeholder:italic");
+    expect(screen.queryByRole("button", { name: "Save terminal shell" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Modify terminal shell" })).not.toBeInTheDocument();
+  });
+
+  it("requires modify before editing an existing custom shell path", async () => {
+    mockApi.getSettings.mockResolvedValueOnce({
+      anthropicApiKeyConfigured: true,
+      anthropicModel: "claude-sonnet-4.6",
+      linearApiKeyConfigured: false,
+      linearAutoTransition: false,
+      linearAutoTransitionStateName: "",
+      editorTabEnabled: false,
+      terminalCustomShellEnabled: true,
+      terminalCustomShellExecutable: "D:\\Softwares\\PowerShell-7.5.4-win-x64\\pwsh.exe",
+      updateChannel: "stable",
+    });
+    mockApi.updateSettings.mockResolvedValueOnce({
+      anthropicApiKeyConfigured: true,
+      anthropicModel: "claude-sonnet-4.6",
+      linearApiKeyConfigured: false,
+      linearAutoTransition: false,
+      linearAutoTransitionStateName: "",
+      editorTabEnabled: false,
+      terminalCustomShellEnabled: true,
+      terminalCustomShellExecutable: "D:\\Softwares\\PowerShell-7.5.4-win-x64\\pwsh.exe",
+      updateChannel: "stable",
+    });
+
+    render(<SettingsPage />);
+    await screen.findByText("Anthropic key configured");
+
+    const input = screen.getByLabelText("Shell executable path");
+    expect(input).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Modify terminal shell" })).toHaveTextContent("Modify");
+
+    fireEvent.click(screen.getByRole("button", { name: "Modify terminal shell" }));
+    expect(screen.getByRole("button", { name: "Save terminal shell" })).toHaveTextContent("Save");
+    expect(input).not.toBeDisabled();
+
+    fireEvent.change(input, {
+      target: { value: "D:\\Softwares\\PowerShell-7.5.4-win-x64\\pwsh.exe" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save terminal shell" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateSettings).toHaveBeenCalledWith({
+        terminalCustomShellEnabled: true,
+        terminalCustomShellExecutable: "D:\\Softwares\\PowerShell-7.5.4-win-x64\\pwsh.exe",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Modify terminal shell" })).toBeInTheDocument();
+    });
+    expect(input).toBeDisabled();
+  });
+
+  it("persists immediately when toggling custom shell from on to off", async () => {
+    mockApi.getSettings.mockResolvedValueOnce({
+      anthropicApiKeyConfigured: true,
+      anthropicModel: "claude-sonnet-4.6",
+      linearApiKeyConfigured: false,
+      linearAutoTransition: false,
+      linearAutoTransitionStateName: "",
+      editorTabEnabled: false,
+      terminalCustomShellEnabled: true,
+      terminalCustomShellExecutable: "D:\\Softwares\\PowerShell-7.5.4-win-x64\\pwsh.exe",
+      updateChannel: "stable",
+    });
+    mockApi.updateSettings.mockResolvedValueOnce({
+      anthropicApiKeyConfigured: true,
+      anthropicModel: "claude-sonnet-4.6",
+      linearApiKeyConfigured: false,
+      linearAutoTransition: false,
+      linearAutoTransitionStateName: "",
+      editorTabEnabled: false,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "D:\\Softwares\\PowerShell-7.5.4-win-x64\\pwsh.exe",
+      updateChannel: "stable",
+    });
+
+    render(<SettingsPage />);
+    await screen.findByText("Anthropic key configured");
+
+    fireEvent.click(screen.getByRole("button", { name: /Custom Shell executable/i }));
+
+    await waitFor(() => {
+      expect(mockApi.updateSettings).toHaveBeenCalledWith({
+        terminalCustomShellEnabled: false,
+        terminalCustomShellExecutable: "D:\\Softwares\\PowerShell-7.5.4-win-x64\\pwsh.exe",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Save terminal shell" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Modify terminal shell" })).not.toBeInTheDocument();
     });
   });
 
@@ -805,6 +934,8 @@ describe("SettingsPage", () => {
       aiValidationEnabled: true,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
     });
     mockApi.updateSettings.mockResolvedValue({
@@ -843,6 +974,8 @@ describe("SettingsPage", () => {
       aiValidationEnabled: true,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
     });
     mockApi.updateSettings.mockResolvedValue({

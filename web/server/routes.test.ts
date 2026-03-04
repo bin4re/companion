@@ -82,6 +82,8 @@ vi.mock("./settings-manager.js", () => ({
     aiValidationEnabled: false,
     aiValidationAutoApprove: true,
     aiValidationAutoDeny: true,
+    terminalCustomShellEnabled: false,
+    terminalCustomShellExecutable: "",
     updateChannel: "stable",
     updatedAt: 0,
   })),
@@ -99,6 +101,8 @@ vi.mock("./settings-manager.js", () => ({
     aiValidationEnabled: patch.aiValidationEnabled ?? false,
     aiValidationAutoApprove: patch.aiValidationAutoApprove ?? true,
     aiValidationAutoDeny: patch.aiValidationAutoDeny ?? true,
+    terminalCustomShellEnabled: patch.terminalCustomShellEnabled ?? false,
+    terminalCustomShellExecutable: patch.terminalCustomShellExecutable ?? "",
     updateChannel: patch.updateChannel ?? "stable",
     updatedAt: Date.now(),
   })),
@@ -1535,6 +1539,8 @@ describe("POST /api/sessions/:id/archive — Linear transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -1571,6 +1577,8 @@ describe("POST /api/sessions/:id/archive — Linear transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -1600,6 +1608,8 @@ describe("POST /api/sessions/:id/archive — Linear transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -1677,6 +1687,8 @@ describe("GET /api/sessions/:id/archive-info", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2043,6 +2055,8 @@ describe("GET /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 123,
     });
@@ -2063,6 +2077,8 @@ describe("GET /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
     });
   });
@@ -2082,6 +2098,8 @@ describe("GET /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 123,
     });
@@ -2102,6 +2120,8 @@ describe("GET /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
     });
   });
@@ -2123,6 +2143,8 @@ describe("PUT /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 456,
     });
@@ -2148,6 +2170,8 @@ describe("PUT /api/settings", () => {
       aiValidationEnabled: undefined,
       aiValidationAutoApprove: undefined,
       aiValidationAutoDeny: undefined,
+      terminalCustomShellEnabled: undefined,
+      terminalCustomShellExecutable: undefined,
       updateChannel: undefined,
     });
     const json = await res.json();
@@ -2163,6 +2187,8 @@ describe("PUT /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
     });
   });
@@ -2182,6 +2208,8 @@ describe("PUT /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 789,
     });
@@ -2200,7 +2228,16 @@ describe("PUT /api/settings", () => {
       linearAutoTransition: undefined,
       linearAutoTransitionStateId: undefined,
       linearAutoTransitionStateName: undefined,
+      linearArchiveTransition: undefined,
+      linearArchiveTransitionStateId: undefined,
+      linearArchiveTransitionStateName: undefined,
       editorTabEnabled: undefined,
+      aiValidationEnabled: undefined,
+      aiValidationAutoApprove: undefined,
+      aiValidationAutoDeny: undefined,
+      terminalCustomShellEnabled: undefined,
+      terminalCustomShellExecutable: undefined,
+      updateChannel: undefined,
     });
   });
 
@@ -2219,6 +2256,8 @@ describe("PUT /api/settings", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 999,
     });
@@ -2237,7 +2276,16 @@ describe("PUT /api/settings", () => {
       linearAutoTransition: undefined,
       linearAutoTransitionStateId: undefined,
       linearAutoTransitionStateName: undefined,
+      linearArchiveTransition: undefined,
+      linearArchiveTransitionStateId: undefined,
+      linearArchiveTransitionStateName: undefined,
       editorTabEnabled: undefined,
+      aiValidationEnabled: undefined,
+      aiValidationAutoApprove: undefined,
+      aiValidationAutoDeny: undefined,
+      terminalCustomShellEnabled: undefined,
+      terminalCustomShellExecutable: undefined,
+      updateChannel: undefined,
     });
   });
 
@@ -2287,6 +2335,18 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json).toEqual({ error: "editorTabEnabled must be a boolean" });
+  });
+
+  it("returns 400 for non-boolean terminal custom-shell switch", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ terminalCustomShellEnabled: 123 }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ error: "terminalCustomShellEnabled must be a boolean" });
   });
 
   // Rejects invalid updateChannel values that aren't "stable" or "prerelease"
@@ -2424,6 +2484,8 @@ describe("GET /api/linear/issues", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2449,6 +2511,8 @@ describe("GET /api/linear/issues", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2528,6 +2592,8 @@ describe("GET /api/linear/issues", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2614,6 +2680,8 @@ describe("GET /api/linear/issues", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2665,6 +2733,8 @@ describe("GET /api/linear/connection", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2690,6 +2760,8 @@ describe("GET /api/linear/connection", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2738,6 +2810,8 @@ describe("POST /api/linear/issues/:id/transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2768,6 +2842,8 @@ describe("POST /api/linear/issues/:id/transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2797,6 +2873,8 @@ describe("POST /api/linear/issues/:id/transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2827,6 +2905,8 @@ describe("POST /api/linear/issues/:id/transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2892,6 +2972,8 @@ describe("POST /api/linear/issues/:id/transition", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2936,6 +3018,8 @@ describe("GET /api/linear/projects", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -2961,6 +3045,8 @@ describe("GET /api/linear/projects", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -3017,6 +3103,8 @@ describe("GET /api/linear/project-issues", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -3042,6 +3130,8 @@ describe("GET /api/linear/project-issues", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -3113,6 +3203,8 @@ describe("GET /api/linear/project-issues", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -4819,3 +4911,5 @@ describe("POST /api/sessions/:id/processes/system/:pid/kill", () => {
     killSpy.mockRestore();
   });
 });
+
+

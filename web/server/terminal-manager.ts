@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SocketData } from "./ws-bridge.js";
+import { getSettings } from "./settings-manager.js";
 
 const textEncoder = new TextEncoder();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -163,13 +164,21 @@ function readBridgeStderr(
 
 function resolveHostShell(): HostShellSpec {
   if (process.platform === "win32") {
+    const settings = getSettings();
+    const configuredBinary = settings.terminalCustomShellEnabled
+      ? settings.terminalCustomShellExecutable.trim()
+      : null;
+    if (configuredBinary && !shellBinaryExists(configuredBinary)) {
+      console.warn(`[terminal] Configured Windows shell not found: ${configuredBinary}; falling back to defaults`);
+    }
     const candidates = [
-      process.env.COMSPEC?.trim(),
-      "pwsh.exe",
+      configuredBinary,
       "powershell.exe",
+      "pwsh.exe",
+      process.env.COMSPEC?.trim(),
       "cmd.exe",
     ].filter(Boolean) as string[];
-    const binary = candidates.find(shellBinaryExists) || "cmd.exe";
+    const binary = candidates.find(shellBinaryExists) || "powershell.exe";
     const lower = binary.toLowerCase();
 
     if (lower.includes("pwsh")) {
@@ -188,11 +197,19 @@ function resolveHostShell(): HostShellSpec {
         env: { SHELL: "powershell.exe", MSYSTEM: undefined, MINGW_PREFIX: undefined },
       };
     }
+    if (lower.includes("cmd")) {
+      return {
+        binary,
+        args: [],
+        label: "cmd.exe",
+        env: { SHELL: undefined, MSYSTEM: undefined, MINGW_PREFIX: undefined },
+      };
+    }
     return {
       binary,
       args: [],
-      label: "cmd.exe",
-      env: { SHELL: undefined, MSYSTEM: undefined, MINGW_PREFIX: undefined },
+      label: binary,
+      env: { MSYSTEM: undefined, MINGW_PREFIX: undefined },
     };
   }
 

@@ -383,6 +383,8 @@ export interface AppSettings {
   aiValidationEnabled: boolean;
   aiValidationAutoApprove: boolean;
   aiValidationAutoDeny: boolean;
+  terminalCustomShellEnabled: boolean;
+  terminalCustomShellExecutable: string;
   updateChannel: "stable" | "prerelease";
 }
 
@@ -861,6 +863,8 @@ export const api = {
     linearArchiveTransitionStateId?: string;
     linearArchiveTransitionStateName?: string;
     editorTabEnabled?: boolean;
+    terminalCustomShellEnabled?: boolean;
+    terminalCustomShellExecutable?: string;
     updateChannel?: "stable" | "prerelease";
   }) => put<AppSettings>("/settings", data),
   verifyAnthropicKey: (apiKey: string) =>

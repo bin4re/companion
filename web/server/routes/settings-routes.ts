@@ -17,6 +17,8 @@ export function registerSettingsRoutes(api: Hono): void {
       aiValidationEnabled: settings.aiValidationEnabled,
       aiValidationAutoApprove: settings.aiValidationAutoApprove,
       aiValidationAutoDeny: settings.aiValidationAutoDeny,
+      terminalCustomShellEnabled: settings.terminalCustomShellEnabled,
+      terminalCustomShellExecutable: settings.terminalCustomShellExecutable,
       updateChannel: settings.updateChannel,
     });
   });
@@ -62,6 +64,12 @@ export function registerSettingsRoutes(api: Hono): void {
     if (body.aiValidationAutoDeny !== undefined && typeof body.aiValidationAutoDeny !== "boolean") {
       return c.json({ error: "aiValidationAutoDeny must be a boolean" }, 400);
     }
+    if (body.terminalCustomShellEnabled !== undefined && typeof body.terminalCustomShellEnabled !== "boolean") {
+      return c.json({ error: "terminalCustomShellEnabled must be a boolean" }, 400);
+    }
+    if (body.terminalCustomShellExecutable !== undefined && typeof body.terminalCustomShellExecutable !== "string") {
+      return c.json({ error: "terminalCustomShellExecutable must be a string" }, 400);
+    }
     if (body.updateChannel !== undefined && body.updateChannel !== "stable" && body.updateChannel !== "prerelease") {
       return c.json({ error: "updateChannel must be 'stable' or 'prerelease'" }, 400);
     }
@@ -73,6 +81,7 @@ export function registerSettingsRoutes(api: Hono): void {
       || body.editorTabEnabled !== undefined
       || body.aiValidationEnabled !== undefined || body.aiValidationAutoApprove !== undefined
       || body.aiValidationAutoDeny !== undefined
+      || body.terminalCustomShellEnabled !== undefined || body.terminalCustomShellExecutable !== undefined
       || body.updateChannel !== undefined;
     if (!hasAnyField) {
       return c.json({ error: "At least one settings field is required" }, 400);
@@ -135,6 +144,14 @@ export function registerSettingsRoutes(api: Hono): void {
         typeof body.aiValidationAutoDeny === "boolean"
           ? body.aiValidationAutoDeny
           : undefined,
+      terminalCustomShellEnabled:
+        typeof body.terminalCustomShellEnabled === "boolean"
+          ? body.terminalCustomShellEnabled
+          : undefined,
+      terminalCustomShellExecutable:
+        typeof body.terminalCustomShellExecutable === "string"
+          ? body.terminalCustomShellExecutable.trim()
+          : undefined,
       updateChannel:
         body.updateChannel === "stable" || body.updateChannel === "prerelease"
           ? (body.updateChannel as UpdateChannel)
@@ -153,6 +170,8 @@ export function registerSettingsRoutes(api: Hono): void {
       aiValidationEnabled: settings.aiValidationEnabled,
       aiValidationAutoApprove: settings.aiValidationAutoApprove,
       aiValidationAutoDeny: settings.aiValidationAutoDeny,
+      terminalCustomShellEnabled: settings.terminalCustomShellEnabled,
+      terminalCustomShellExecutable: settings.terminalCustomShellExecutable,
       updateChannel: settings.updateChannel,
     });
   });

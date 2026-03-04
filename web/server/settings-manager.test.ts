@@ -38,6 +38,8 @@ describe("settings-manager", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -84,6 +86,8 @@ describe("settings-manager", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 123,
     });
@@ -137,6 +141,8 @@ describe("settings-manager", () => {
       aiValidationEnabled: false,
       aiValidationAutoApprove: true,
       aiValidationAutoDeny: true,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
       updateChannel: "stable",
       updatedAt: 0,
     });
@@ -172,6 +178,15 @@ describe("settings-manager", () => {
   it("updates updateChannel to prerelease", () => {
     const updated = updateSettings({ updateChannel: "prerelease" });
     expect(updated.updateChannel).toBe("prerelease");
+  });
+
+  it("updates terminal shell settings", () => {
+    const updated = updateSettings({
+      terminalCustomShellEnabled: true,
+      terminalCustomShellExecutable: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    });
+    expect(updated.terminalCustomShellEnabled).toBe(true);
+    expect(updated.terminalCustomShellExecutable).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
   });
 
   it("defaults updateChannel to stable for invalid values", () => {

@@ -10,6 +10,7 @@ interface SettingsPageProps {
 
 const CATEGORIES = [
   { id: "general", label: "General" },
+  { id: "terminal", label: "Terminal" },
   { id: "authentication", label: "Authentication" },
   { id: "notifications", label: "Notifications" },
   { id: "anthropic", label: "Anthropic" },
@@ -20,8 +21,11 @@ const CATEGORIES = [
 ] as const;
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
+const TERMINAL_SHELL_PLACEHOLDER = String.raw`Example: C:\ProgramFiles\PowerShell\7\pwsh.exe`;
 
 export function SettingsPage({ embedded = false }: SettingsPageProps) {
+  const isWindowsClient =
+    typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
   const [anthropicApiKey, setAnthropicApiKey] = useState("");
   const [anthropicModel, setAnthropicModel] = useState("claude-sonnet-4.6");
   const [editorTabEnabled, setEditorTabEnabled] = useState(false);
@@ -56,6 +60,13 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [apiKeyFocused, setApiKeyFocused] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<{ valid: boolean; error?: string } | null>(null);
+  const [terminalCustomShellEnabled, setTerminalCustomShellEnabled] = useState(false);
+  const [terminalCustomShellExecutable, setTerminalCustomShellExecutable] = useState("");
+  const [terminalPersistedCustomShellExecutable, setTerminalPersistedCustomShellExecutable] = useState("");
+  const [terminalEditing, setTerminalEditing] = useState(false);
+  const [terminalSaving, setTerminalSaving] = useState(false);
+  const [terminalSaved, setTerminalSaved] = useState(false);
+  const [terminalError, setTerminalError] = useState("");
 
   // Auth section state
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -123,6 +134,16 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
         if (typeof s.aiValidationEnabled === "boolean") setAiValidationEnabled(s.aiValidationEnabled);
         if (typeof s.aiValidationAutoApprove === "boolean") setAiValidationAutoApprove(s.aiValidationAutoApprove);
         if (typeof s.aiValidationAutoDeny === "boolean") setAiValidationAutoDeny(s.aiValidationAutoDeny);
+        setTerminalCustomShellEnabled(
+          typeof s.terminalCustomShellEnabled === "boolean" ? s.terminalCustomShellEnabled : false,
+        );
+        setTerminalCustomShellExecutable(
+          typeof s.terminalCustomShellExecutable === "string" ? s.terminalCustomShellExecutable : "",
+        );
+        setTerminalPersistedCustomShellExecutable(
+          typeof s.terminalCustomShellExecutable === "string" ? s.terminalCustomShellExecutable : "",
+        );
+        setTerminalEditing(false);
         if (s.updateChannel === "stable" || s.updateChannel === "prerelease") setUpdateChannel(s.updateChannel);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
@@ -158,6 +179,63 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onSaveTerminal(e: React.FormEvent) {
+    e.preventDefault();
+
+    const hasPersistedCustomPath = terminalPersistedCustomShellExecutable.trim().length > 0;
+    if (terminalCustomShellEnabled && hasPersistedCustomPath && !terminalEditing) {
+      setTerminalEditing(true);
+      return;
+    }
+    await persistTerminalSettings({
+      terminalCustomShellEnabled,
+      terminalCustomShellExecutable: terminalCustomShellExecutable.trim(),
+    });
+  }
+
+  async function persistTerminalSettings(payload: {
+    terminalCustomShellEnabled: boolean;
+    terminalCustomShellExecutable: string;
+  }): Promise<boolean> {
+    setTerminalSaving(true);
+    setTerminalSaved(false);
+    setTerminalError("");
+    try {
+      const res = await api.updateSettings(payload);
+      setTerminalCustomShellEnabled(!!res.terminalCustomShellEnabled);
+      setTerminalCustomShellExecutable(res.terminalCustomShellExecutable || "");
+      setTerminalPersistedCustomShellExecutable(res.terminalCustomShellExecutable || "");
+      setTerminalEditing(false);
+      setTerminalSaved(true);
+      setTimeout(() => setTerminalSaved(false), 1800);
+      return true;
+    } catch (err: unknown) {
+      setTerminalError(err instanceof Error ? err.message : String(err));
+      return false;
+    } finally {
+      setTerminalSaving(false);
+    }
+  }
+
+  async function onToggleTerminalCustomShell(): Promise<void> {
+    const wasEnabled = terminalCustomShellEnabled;
+    const nextEnabled = !wasEnabled;
+    setTerminalCustomShellEnabled(nextEnabled);
+    if (!nextEnabled) {
+      setTerminalEditing(false);
+      const ok = await persistTerminalSettings({
+        terminalCustomShellEnabled: false,
+        terminalCustomShellExecutable: terminalCustomShellExecutable.trim(),
+      });
+      if (!ok) {
+        setTerminalCustomShellEnabled(wasEnabled);
+      }
+    } else {
+      setTerminalSaved(false);
+      setTerminalError("");
     }
   }
 
@@ -217,6 +295,11 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const setSectionRef = useCallback((id: string) => (el: HTMLElement | null) => {
     sectionRefs.current[id] = el;
   }, []);
+
+  const hasPersistedCustomShellPath = terminalPersistedCustomShellExecutable.trim().length > 0;
+  const terminalRequiresModify = terminalCustomShellEnabled && hasPersistedCustomShellPath && !terminalEditing;
+  const terminalInputEditable = terminalCustomShellEnabled && (!hasPersistedCustomShellPath || terminalEditing);
+  const terminalButtonLabel = terminalRequiresModify ? "Modify" : "Save";
 
   return (
     <div className={`${embedded ? "h-full" : "h-[100dvh]"} bg-cc-bg text-cc-fg font-sans-ui antialiased flex flex-col`}>
@@ -335,6 +418,76 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
                   Last commit shows only uncommitted changes. Default branch shows all changes since diverging from main.
                 </p>
               </div>
+            </section>
+
+            {/* Terminal */}
+            <section id="terminal" ref={setSectionRef("terminal")}>
+              <h2 className="text-sm font-semibold text-cc-fg mb-4">Terminal</h2>
+              <form onSubmit={onSaveTerminal} className="space-y-4">
+                <p className="text-xs text-cc-muted leading-relaxed">
+                  {isWindowsClient
+                    ? "Windows uses PowerShell by default."
+                    : "Configure which shell executable opens in the Shell tab."}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => { void onToggleTerminalCustomShell(); }}
+                  disabled={terminalSaving}
+                  className={`w-full flex items-center justify-between px-3 py-3 min-h-[44px] rounded-lg text-sm bg-cc-hover text-cc-fg transition-colors ${
+                    terminalSaving ? "opacity-60 cursor-not-allowed" : "hover:bg-cc-active cursor-pointer"
+                  }`}
+                >
+                  <span>Custom Shell executable</span>
+                  <span className="text-xs text-cc-muted">{terminalCustomShellEnabled ? "On" : "Off"}</span>
+                </button>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" htmlFor="terminal-custom-shell-executable">
+                    Shell executable path
+                  </label>
+                  <div className="flex items-stretch gap-2">
+                    <input
+                      id="terminal-custom-shell-executable"
+                      type="text"
+                      value={terminalCustomShellExecutable}
+                      onChange={(e) => setTerminalCustomShellExecutable(e.target.value)}
+                      disabled={!terminalInputEditable}
+                      placeholder={TERMINAL_SHELL_PLACEHOLDER}
+                      className={`flex-1 px-3 py-2.5 min-h-[44px] text-sm bg-cc-bg rounded-lg text-cc-fg placeholder:text-cc-muted placeholder:italic focus:outline-none focus:ring-1 focus:ring-cc-primary/40 transition-shadow ${
+                        !terminalInputEditable ? "opacity-60 cursor-not-allowed" : ""
+                      }`}
+                    />
+                    {terminalCustomShellEnabled && (
+                      <button
+                        type="submit"
+                        aria-label={terminalRequiresModify ? "Modify terminal shell" : "Save terminal shell"}
+                        disabled={terminalSaving}
+                        className={`px-3 py-2 min-h-[44px] rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                          terminalSaving
+                            ? "bg-cc-hover text-cc-muted cursor-not-allowed"
+                            : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
+                        }`}
+                      >
+                        {terminalSaving ? "Saving..." : terminalButtonLabel}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {terminalError && (
+                  <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+                    {terminalError}
+                  </div>
+                )}
+
+                {terminalSaved && (
+                  <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
+                    Terminal settings saved.
+                  </div>
+                )}
+
+              </form>
             </section>
 
             {/* Authentication */}
