@@ -526,6 +526,22 @@ describe("POST /api/terminal/spawn", () => {
     const json = await res.json();
     expect(json.error).toMatch(/cwd/i);
   });
+
+  it("returns 500 with a useful error when spawn throws", async () => {
+    terminalManager.spawn.mockImplementation(() => {
+      throw new Error("Failed to spawn terminal with cmd.exe: mock failure");
+    });
+
+    const res = await app.request("/api/terminal/spawn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/workspace" }),
+    });
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.error).toMatch(/Failed to spawn terminal/i);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

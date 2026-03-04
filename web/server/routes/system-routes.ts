@@ -181,10 +181,16 @@ export function registerSystemRoutes(
   api.post("/terminal/spawn", async (c) => {
     const body = await c.req.json<{ cwd: string; cols?: number; rows?: number; containerId?: string }>();
     if (!body.cwd) return c.json({ error: "cwd is required" }, 400);
-    const terminalId = deps.terminalManager.spawn(body.cwd, body.cols, body.rows, {
-      containerId: body.containerId,
-    });
-    return c.json({ terminalId });
+    try {
+      const terminalId = deps.terminalManager.spawn(body.cwd, body.cols, body.rows, {
+        containerId: body.containerId,
+      });
+      return c.json({ terminalId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[terminal] Failed to spawn terminal:", message);
+      return c.json({ error: message || "Failed to spawn terminal" }, 500);
+    }
   });
 
   api.post("/terminal/kill", async (c) => {
