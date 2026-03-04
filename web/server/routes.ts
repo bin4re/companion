@@ -1186,49 +1186,111 @@ export function createRoutes(
     return ts;
   }
 
+  function parseWindowsTasklistImageMap(raw: string): Map<number, string> {
+    const out = new Map<number, string>();
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const m = trimmed.match(/^"([^"]+)","(\d+)"/);
+      if (!m) continue;
+      const pid = parseInt(m[2], 10);
+      if (Number.isNaN(pid)) continue;
+      out.set(pid, m[1]);
+    }
+    return out;
+  }
+
   api.get("/sessions/:id/processes/system", async (c) => {
     const sessionId = c.req.param("id");
     const session = launcher.getSession(sessionId);
     if (!session) return c.json({ error: "Session not found" }, 404);
 
     try {
-      let raw: string;
-      if (session.containerId) {
-        raw = containerManager.execInContainer(
-          session.containerId,
-          ["sh", "-c", "lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null || ss -tlnp 2>/dev/null || true"],
-          5_000,
-        );
-      } else {
-        raw = execSync("lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null || true", {
+      const pidMap = new Map<number, { command: string; ports: Set<number> }>();
+      const isHostWindows = !session.containerId && process.platform === "win32";
+
+      if (isHostWindows) {
+        const raw = execSync("netstat -ano -p tcp", {
           timeout: 5_000,
           encoding: "utf-8",
+          stdio: ["ignore", "pipe", "pipe"],
         });
-      }
+        let imageByPid = new Map<number, string>();
+        try {
+          const tasklistRaw = execSync("tasklist /FO CSV /NH", {
+            timeout: 5_000,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          imageByPid = parseWindowsTasklistImageMap(tasklistRaw);
+        } catch {
+          // Best effort only — fall back to "unknown" command names
+        }
 
-      // Parse lsof output: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
-      const lines = raw.trim().split("\n").slice(1); // skip header
-      const pidMap = new Map<number, { command: string; ports: Set<number> }>();
+        for (const line of raw.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          const parts = trimmed.split(/\s+/);
+          if (parts.length < 5) continue;
+          if (parts[0].toUpperCase() !== "TCP") continue;
+          if (parts[3].toUpperCase() !== "LISTENING") continue;
+          const localAddr = parts[1];
+          const pid = parseInt(parts[4], 10);
+          if (Number.isNaN(pid)) continue;
 
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length < 9) continue;
-        const command = parts[0];
-        const pid = parseInt(parts[1], 10);
-        if (isNaN(pid)) continue;
-        if (EXCLUDE_COMMANDS.has(command)) continue;
+          const colonIdx = localAddr.lastIndexOf(":");
+          if (colonIdx === -1) continue;
+          const port = parseInt(localAddr.slice(colonIdx + 1), 10);
+          if (Number.isNaN(port)) continue;
 
-        // macOS lsof NAME ends like `TCP *:3000 (LISTEN)`, so the final token is
-        // often `(LISTEN)` rather than the address. Parse from the full line.
-        const portMatch = line.match(/:(\d+)\s+\(LISTEN\)\s*$/) ?? line.match(/:(\d+)\s*$/);
-        if (!portMatch) continue;
-        const port = parseInt(portMatch[1], 10);
+          const image = imageByPid.get(pid) || "unknown";
+          const command = image.replace(/\.exe$/i, "");
+          if (EXCLUDE_COMMANDS.has(command) || EXCLUDE_COMMANDS.has(image)) continue;
 
-        const existing = pidMap.get(pid);
-        if (existing) {
-          existing.ports.add(port);
+          const existing = pidMap.get(pid);
+          if (existing) {
+            existing.ports.add(port);
+          } else {
+            pidMap.set(pid, { command, ports: new Set([port]) });
+          }
+        }
+      } else {
+        let raw: string;
+        if (session.containerId) {
+          raw = containerManager.execInContainer(
+            session.containerId,
+            ["sh", "-c", "lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null || ss -tlnp 2>/dev/null || true"],
+            5_000,
+          );
         } else {
-          pidMap.set(pid, { command, ports: new Set([port]) });
+          raw = execSync("lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null || true", {
+            timeout: 5_000,
+            encoding: "utf-8",
+          });
+        }
+
+        // Parse lsof output: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+        const lines = raw.trim().split("\n").slice(1); // skip header
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length < 9) continue;
+          const command = parts[0];
+          const pid = parseInt(parts[1], 10);
+          if (isNaN(pid)) continue;
+          if (EXCLUDE_COMMANDS.has(command)) continue;
+
+          // macOS lsof NAME ends like `TCP *:3000 (LISTEN)`, so the final token is
+          // often `(LISTEN)` rather than the address. Parse from the full line.
+          const portMatch = line.match(/:(\d+)\s+\(LISTEN\)\s*$/) ?? line.match(/:(\d+)\s*$/);
+          if (!portMatch) continue;
+          const port = parseInt(portMatch[1], 10);
+
+          const existing = pidMap.get(pid);
+          if (existing) {
+            existing.ports.add(port);
+          } else {
+            pidMap.set(pid, { command, ports: new Set([port]) });
+          }
         }
       }
 
@@ -1261,7 +1323,7 @@ export function createRoutes(
               ["ps", "-p", String(pid), "-o", "args="],
               2_000,
             ).trim();
-          } else {
+          } else if (!isHostWindows) {
             fullCommand = execSync(`ps -p ${pid} -o args= 2>/dev/null || true`, {
               timeout: 2_000,
               encoding: "utf-8",
@@ -1279,7 +1341,7 @@ export function createRoutes(
               2_000,
             ).trim();
             cwd = cwdRaw || undefined;
-          } else {
+          } else if (!isHostWindows) {
             const cwdRaw = execSync(`lsof -a -p ${pid} -d cwd -Fn 2>/dev/null || true`, {
               timeout: 2_000,
               encoding: "utf-8",
@@ -1298,7 +1360,7 @@ export function createRoutes(
               2_000,
             );
             startedAt = parsePsStartTime(startRaw);
-          } else {
+          } else if (!isHostWindows) {
             const startRaw = execSync(`ps -p ${pid} -o lstart= 2>/dev/null || true`, {
               timeout: 2_000,
               encoding: "utf-8",
