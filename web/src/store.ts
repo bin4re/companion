@@ -24,6 +24,7 @@ export interface QuickTerminalTab {
   label: string;
   cwd: string;
   containerId?: string;
+  sessionId?: string;
 }
 
 export type QuickTerminalPlacement = "top" | "right" | "bottom" | "left";
@@ -865,10 +866,12 @@ export const useStore = create<AppState>((set) => ({
   setQuickTerminalOpen: (open) => set({ quickTerminalOpen: open }),
   openQuickTerminal: (opts) =>
     set((s) => {
+      const ownerSessionId = s.currentSessionId || undefined;
       if (opts.reuseIfExists) {
         const existing = s.quickTerminalTabs.find((t) =>
           t.cwd === opts.cwd
-          && t.containerId === opts.containerId,
+          && t.containerId === opts.containerId
+          && (t.sessionId || undefined) === ownerSessionId,
         );
         if (existing) {
           return {
@@ -890,6 +893,7 @@ export const useStore = create<AppState>((set) => ({
           : (hostIndex === 1 ? "Terminal" : `Terminal ${hostIndex}`),
         cwd: opts.cwd,
         containerId: opts.containerId,
+        sessionId: ownerSessionId,
       };
       return {
         quickTerminalOpen: true,

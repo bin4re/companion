@@ -79,11 +79,15 @@ export function TopBar() {
   const showWorkspaceControls = !!(currentSessionId && isSessionView);
   const showContextToggle = route.page === "session" && !!currentSessionId;
   const workspaceTabs: WorkspaceTab[] = ["chat", "diff", "terminal", "processes", "editor"];
+  const sessionQuickTerminalTabs = useMemo(() => {
+    if (!currentSessionId) return [];
+    return quickTerminalTabs.filter((tab) => !tab.sessionId || tab.sessionId === currentSessionId);
+  }, [quickTerminalTabs, currentSessionId]);
 
   const activateWorkspaceTab = (tab: WorkspaceTab) => {
     if (tab === "terminal") {
       if (!cwd) return;
-      if (!quickTerminalOpen || quickTerminalTabs.length === 0) {
+      if (!quickTerminalOpen || sessionQuickTerminalTabs.length === 0) {
         openQuickTerminal({ ...defaultTerminalOpts, reuseIfExists: true });
       }
       setActiveTab("terminal");
@@ -124,7 +128,7 @@ export function TopBar() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [showWorkspaceControls, workspaceTabs, activeTab, cwd, quickTerminalOpen, quickTerminalTabs.length, openQuickTerminal, defaultTerminalOpts, setActiveTab, markChatTabReentry, currentSessionId]);
+  }, [showWorkspaceControls, workspaceTabs, activeTab, cwd, quickTerminalOpen, sessionQuickTerminalTabs.length, openQuickTerminal, defaultTerminalOpts, setActiveTab, markChatTabReentry, currentSessionId]);
 
   return (
     <header className="relative shrink-0 h-11 px-4 bg-cc-bg">

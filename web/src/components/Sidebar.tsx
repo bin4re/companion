@@ -147,7 +147,6 @@ export function Sidebar() {
   }, []);
 
   function handleSelectSession(sessionId: string) {
-    useStore.getState().closeTerminal();
     // Navigate to session hash — App.tsx hash effect handles setCurrentSession + connectSession
     navigateToSession(sessionId);
     // Close sidebar on mobile
@@ -157,7 +156,6 @@ export function Sidebar() {
   }
 
   function handleNewSession() {
-    useStore.getState().closeTerminal();
     navigateHome();
     useStore.getState().newSession();
     if (window.innerWidth < 768) {
@@ -620,9 +618,6 @@ export function Sidebar() {
               <button
                 key={item.id}
                 onClick={() => {
-                  if (item.id !== "terminal") {
-                    useStore.getState().closeTerminal();
-                  }
                   window.location.hash = item.hash;
                   // Close sidebar on mobile so the navigated page is visible
                   if (window.innerWidth < 768) {

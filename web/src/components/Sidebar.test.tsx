@@ -1502,19 +1502,18 @@ describe("Sidebar", () => {
     expect(screen.getByText("agent-model")).toBeInTheDocument();
   });
 
-  // ─── Footer nav: closeTerminal behavior ────────────────────────────────────
+  // ─── Footer nav: terminal persistence behavior ─────────────────────────────
 
-  it("clicking a non-terminal nav item calls closeTerminal", () => {
-    // Verifies that clicking any nav item except Terminal calls closeTerminal()
-    // to dismiss the terminal overlay.
+  it("clicking a non-terminal nav item does NOT clear terminal state", () => {
+    // Terminal state should be preserved when navigating between footer pages.
     render(<Sidebar />);
+    mockState.closeTerminal.mockClear();
     fireEvent.click(screen.getByTitle("Prompts"));
-    expect(mockState.closeTerminal).toHaveBeenCalled();
+    expect(mockState.closeTerminal).not.toHaveBeenCalled();
   });
 
   it("clicking Terminal nav item does NOT call closeTerminal", () => {
-    // Verifies that clicking the Terminal nav item does NOT call closeTerminal,
-    // since the terminal should remain open when navigating to it.
+    // Terminal nav should keep existing terminal state untouched.
     render(<Sidebar />);
 
     // Reset mocks from initial poll
@@ -1524,16 +1523,17 @@ describe("Sidebar", () => {
     expect(mockState.closeTerminal).not.toHaveBeenCalled();
   });
 
-  it("New Session button calls closeTerminal", () => {
-    // Verifies that clicking the New Session button closes any open terminal.
+  it("New Session button does NOT clear terminal state", () => {
+    // Starting a new session should not wipe the global terminal page state.
     render(<Sidebar />);
+    mockState.closeTerminal.mockClear();
     const buttons = screen.getAllByTitle("New Session");
     fireEvent.click(buttons[0]);
-    expect(mockState.closeTerminal).toHaveBeenCalled();
+    expect(mockState.closeTerminal).not.toHaveBeenCalled();
   });
 
-  it("selecting a session calls closeTerminal", () => {
-    // Verifies that clicking on a session item closes any open terminal.
+  it("selecting a session does NOT clear terminal state", () => {
+    // Switching to a session should preserve terminal page state.
     const session = makeSession("s1");
     const sdk = makeSdkSession("s1");
     mockState = createMockState({
@@ -1542,10 +1542,11 @@ describe("Sidebar", () => {
     });
 
     render(<Sidebar />);
+    mockState.closeTerminal.mockClear();
     const sessionButton = screen.getByText("claude-sonnet-4-6").closest("button")!;
     fireEvent.click(sessionButton);
 
-    expect(mockState.closeTerminal).toHaveBeenCalled();
+    expect(mockState.closeTerminal).not.toHaveBeenCalled();
   });
 
   // ─── Footer nav: active state ──────────────────────────────────────────────

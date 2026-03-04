@@ -54,6 +54,8 @@ export default function App() {
   const taskPanelOpen = useStore((s) => s.taskPanelOpen);
   const homeResetKey = useStore((s) => s.homeResetKey);
   const activeTab = useStore((s) => s.activeTab);
+  const rawQuickTerminalTabs = useStore((s) => (s as unknown as { quickTerminalTabs?: Array<{ sessionId?: string | null }> }).quickTerminalTabs);
+  const quickTerminalTabs = Array.isArray(rawQuickTerminalTabs) ? rawQuickTerminalTabs : [];
   const setActiveTab = useStore((s) => s.setActiveTab);
   const sessionCreating = useStore((s) => s.sessionCreating);
   const sessionCreatingBackend = useStore((s) => s.sessionCreatingBackend);
@@ -72,6 +74,24 @@ export default function App() {
   const isScheduledPage = route.page === "scheduled";
   const isAgentsPage = route.page === "agents" || route.page === "agent-detail";
   const isSessionView = route.page === "session" || route.page === "home";
+  const keepAliveSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const tab of quickTerminalTabs) {
+      if (typeof tab?.sessionId === "string" && tab.sessionId.trim()) {
+        ids.add(tab.sessionId);
+      }
+    }
+    // Backward-compat: pre-migration tabs without sessionId are treated as current.
+    if (currentSessionId && quickTerminalTabs.some((tab) => !tab?.sessionId)) {
+      ids.add(currentSessionId);
+    }
+    return Array.from(ids);
+  }, [quickTerminalTabs, currentSessionId]);
+  const dockSessionIds = useMemo(() => {
+    const ids = new Set(keepAliveSessionIds);
+    if (currentSessionId) ids.add(currentSessionId);
+    return Array.from(ids);
+  }, [keepAliveSessionIds, currentSessionId]);
 
   useEffect(() => {
     capturePageView(hash || "#/");
@@ -212,11 +232,9 @@ export default function App() {
             </div>
           )}
 
-          {isTerminalPage && (
-            <div className="absolute inset-0">
-              <Suspense fallback={<LazyFallback />}><TerminalPage /></Suspense>
-            </div>
-          )}
+          <div className={`absolute inset-0 ${isTerminalPage ? "" : "hidden"}`}>
+            <Suspense fallback={<LazyFallback />}><TerminalPage visible={isTerminalPage} /></Suspense>
+          </div>
 
           {isEnvironmentsPage && (
             <div className="absolute inset-0">
@@ -246,25 +264,11 @@ export default function App() {
             <>
               <div className="absolute inset-0">
                 {currentSessionId ? (
-                  activeTab === "terminal"
-                    ? (
-                      <SessionTerminalDock
-                        sessionId={currentSessionId}
-                        terminalOnly
-                        onClosePanel={() => useStore.getState().setActiveTab("chat")}
-                      />
-                    )
-                    : activeTab === "processes"
-                      ? <Suspense fallback={<LazyFallback />}><ProcessPanel sessionId={currentSessionId} /></Suspense>
-                      : activeTab === "editor"
-                        ? <SessionEditorPane sessionId={currentSessionId} />
-                        : (
-                        <SessionTerminalDock sessionId={currentSessionId} suppressPanel>
-                          {activeTab === "diff"
-                            ? <DiffPanel sessionId={currentSessionId} />
-                            : <ChatView sessionId={currentSessionId} />}
-                        </SessionTerminalDock>
-                      )
+                  activeTab === "processes"
+                    ? <Suspense fallback={<LazyFallback />}><ProcessPanel sessionId={currentSessionId} /></Suspense>
+                    : activeTab === "editor"
+                      ? <SessionEditorPane sessionId={currentSessionId} />
+                      : null
                 ) : (
                   <HomePage key={homeResetKey} />
                 )}
@@ -281,6 +285,38 @@ export default function App() {
               )}
             </>
           )}
+
+          {dockSessionIds.map((id) => {
+            const currentDockVisible =
+              isSessionView
+              && currentSessionId === id
+              && activeTab !== "processes"
+              && activeTab !== "editor";
+            const showTerminalOnly = currentDockVisible && activeTab === "terminal";
+            const showDiff = currentDockVisible && activeTab === "diff";
+            const showChat = currentDockVisible && !showTerminalOnly && !showDiff;
+
+            return (
+              <div
+                key={`term-dock-${id}`}
+                className={`absolute inset-0 ${currentDockVisible ? "" : "hidden"}`}
+                aria-hidden={currentDockVisible ? undefined : "true"}
+              >
+                <SessionTerminalDock
+                  sessionId={id}
+                  terminalOnly={showTerminalOnly}
+                  suppressPanel={!showTerminalOnly}
+                  onClosePanel={currentDockVisible ? () => useStore.getState().setActiveTab("chat") : undefined}
+                >
+                  {showDiff
+                    ? <DiffPanel sessionId={id} />
+                    : showChat
+                      ? <ChatView sessionId={id} />
+                      : null}
+                </SessionTerminalDock>
+              </div>
+            );
+          })}
         </div>
       </div>
 

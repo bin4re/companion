@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useStore, type QuickTerminalPlacement } from "../store.js";
 import { TerminalView } from "./TerminalView.js";
 interface SessionTerminalDockProps {
@@ -71,11 +71,29 @@ export function SessionTerminalDock({
     ? { target: "docker" as const, cwd: "/workspace", containerId: sdkSession.containerId }
     : (cwd ? { target: "host" as const, cwd } : null);
 
-  const hasPanel = currentSessionId === sessionId && quickTerminalOpen && quickTerminalTabs.length > 0;
+  const sessionQuickTerminalTabs = useMemo(
+    () => quickTerminalTabs.filter((tab) => !tab.sessionId || tab.sessionId === sessionId),
+    [quickTerminalTabs, sessionId],
+  );
+  const activeSessionTerminalTabId = sessionQuickTerminalTabs.some((tab) => tab.id === activeQuickTerminalTabId)
+    ? activeQuickTerminalTabId
+    : (sessionQuickTerminalTabs[0]?.id || null);
+  const hasPanel =
+    quickTerminalOpen
+    && sessionQuickTerminalTabs.length > 0
+    && (currentSessionId === sessionId || suppressPanel);
   const layout = useMemo(
     () => placementLayout(quickTerminalPlacement),
     [quickTerminalPlacement],
   );
+
+  useEffect(() => {
+    if (currentSessionId !== sessionId) return;
+    if (!hasPanel) return;
+    if (activeSessionTerminalTabId && activeQuickTerminalTabId !== activeSessionTerminalTabId) {
+      setActiveQuickTerminalTabId(activeSessionTerminalTabId);
+    }
+  }, [hasPanel, activeSessionTerminalTabId, activeQuickTerminalTabId, setActiveQuickTerminalTabId, currentSessionId, sessionId]);
 
   const closeDock = () => {
     setQuickTerminalOpen(false);
@@ -117,12 +135,12 @@ export function SessionTerminalDock({
       <div className="px-2 py-1.5 border-b border-cc-border bg-cc-sidebar flex items-center gap-2">
         <div className="flex-1 min-w-0 overflow-x-auto">
           <div className="flex items-center gap-1.5 min-w-max">
-            {quickTerminalTabs.map((tab) => (
+            {sessionQuickTerminalTabs.map((tab) => (
               <div
                 key={tab.id}
                 onClick={() => setActiveQuickTerminalTabId(tab.id)}
                 className={`group inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ${
-                  activeQuickTerminalTabId === tab.id
+                  activeSessionTerminalTabId === tab.id
                     ? "text-cc-fg bg-cc-card border-cc-border"
                     : "text-cc-muted bg-transparent border-transparent hover:text-cc-fg hover:bg-cc-hover"
                 }`}
@@ -172,14 +190,14 @@ export function SessionTerminalDock({
       </div>
 
       <div className="flex-1 min-h-0" style={{ background: "var(--terminal-bg, #141413)" }}>
-        {quickTerminalTabs.map((tab) => (
-          <div key={tab.id} className={activeQuickTerminalTabId === tab.id ? "h-full" : "hidden"}>
+        {sessionQuickTerminalTabs.map((tab) => (
+          <div key={tab.id} className={activeSessionTerminalTabId === tab.id ? "h-full" : "hidden"}>
             <TerminalView
               cwd={tab.cwd}
               containerId={tab.containerId}
               title={tab.containerId ? `docker:${tab.cwd}` : tab.cwd}
               embedded
-              visible={activeQuickTerminalTabId === tab.id}
+              visible={activeSessionTerminalTabId === tab.id}
               hideHeader
             />
           </div>
@@ -188,27 +206,25 @@ export function SessionTerminalDock({
     </div>
   );
 
-  const contentArea = terminalOnly ? null : (
-    <div className={suppressPanel ? "h-full min-h-0" : layout.contentWrapClass}>{children}</div>
-  );
-
+  const rootClass = terminalOnly
+    ? "h-full min-h-0 relative"
+    : suppressPanel
+      ? "h-full min-h-0 relative"
+      : `h-full min-h-0 flex ${layout.shellClass}`;
+  const contentAreaClass = terminalOnly
+    ? "hidden"
+    : suppressPanel
+      ? "h-full min-h-0"
+      : layout.contentWrapClass;
   const terminalAreaClass = terminalOnly
-    ? "h-full min-h-0 bg-cc-card"
+    ? "absolute inset-0 h-full min-h-0 bg-cc-card"
     : suppressPanel
       ? "absolute inset-0 opacity-0 pointer-events-none"
       : `min-h-0 shrink-0 bg-cc-card ${layout.terminalWrapClass}`;
 
-  if (terminalOnly) {
-    return (
-      <div className="h-full min-h-0 bg-cc-card">
-        {terminalPanel}
-      </div>
-    );
-  }
-
   return (
-    <div className={`h-full min-h-0 ${suppressPanel ? "relative" : `flex ${layout.shellClass}`}`}>
-      {contentArea}
+    <div className={rootClass}>
+      <div className={contentAreaClass}>{children}</div>
       <div className={terminalAreaClass} aria-hidden={suppressPanel ? "true" : undefined}>
         {terminalPanel}
       </div>

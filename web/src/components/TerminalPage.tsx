@@ -3,7 +3,11 @@ import { useStore } from "../store.js";
 import { FolderPicker } from "./FolderPicker.js";
 import { TerminalView } from "./TerminalView.js";
 
-export function TerminalPage() {
+interface TerminalPageProps {
+  visible?: boolean;
+}
+
+export function TerminalPage({ visible = true }: TerminalPageProps) {
   const terminalCwd = useStore((s) => s.terminalCwd);
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
 
@@ -28,7 +32,7 @@ export function TerminalPage() {
 
         <div className="flex-1 min-h-[420px]">
           {terminalCwd ? (
-            <TerminalView cwd={terminalCwd} embedded />
+            <TerminalView cwd={terminalCwd} embedded visible={visible} />
           ) : (
             <div className="h-full bg-cc-card border border-cc-border rounded-xl p-6 sm:p-8 flex items-center justify-center text-center">
               <div className="max-w-md">

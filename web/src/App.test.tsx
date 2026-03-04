@@ -31,6 +31,8 @@ const { mockStoreState, mockGetState } = vi.hoisted(() => {
     homeResetKey: 0,
     activeTab: "chat" as string,
     setActiveTab: vi.fn(),
+    quickTerminalOpen: false,
+    quickTerminalTabs: [],
     sessionCreating: false,
     sessionCreatingBackend: null,
     creationProgress: null,
@@ -125,8 +127,10 @@ vi.mock("./components/SessionLaunchOverlay.js", () => ({
 }));
 
 vi.mock("./components/SessionTerminalDock.js", () => ({
-  SessionTerminalDock: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid="session-terminal-dock">{children}</div>
+  SessionTerminalDock: ({ sessionId, children }: { sessionId: string; children?: React.ReactNode }) => (
+    <div data-testid="session-terminal-dock" data-session-id={sessionId} aria-label={`dock-${sessionId}`}>
+      <div data-testid={`session-terminal-dock-${sessionId}`}>{children}</div>
+    </div>
   ),
 }));
 
@@ -209,6 +213,8 @@ beforeEach(() => {
     homeResetKey: 0,
     activeTab: "chat",
     setActiveTab: vi.fn(),
+    quickTerminalOpen: false,
+    quickTerminalTabs: [],
     sessionCreating: false,
     sessionCreatingBackend: null,
     creationProgress: null,
@@ -272,6 +278,7 @@ describe("App", () => {
       render(<App />);
 
       expect(screen.getByTestId("session-terminal-dock")).toBeInTheDocument();
+      expect(screen.getByTestId("session-terminal-dock-s1")).toBeInTheDocument();
       expect(screen.getByTestId("chat-view")).toBeInTheDocument();
       expect(screen.getByText("ChatView:s1")).toBeInTheDocument();
     });
@@ -315,6 +322,27 @@ describe("App", () => {
       });
     });
 
+    it("keeps separate terminal docks mounted for other sessions with open quick terminals", () => {
+      (parseHash as ReturnType<typeof vi.fn>).mockReturnValue({ page: "session", sessionId: "s2" });
+      setStoreValues({
+        currentSessionId: "s2",
+        activeTab: "chat",
+        quickTerminalOpen: true,
+        quickTerminalTabs: [
+          { id: "tab-s1", label: "Terminal", cwd: "/repo-s1", sessionId: "s1" },
+          { id: "tab-s2", label: "Terminal", cwd: "/repo-s2", sessionId: "s2" },
+        ],
+      });
+
+      render(<App />);
+
+      const docks = screen.getAllByTestId("session-terminal-dock");
+      expect(docks).toHaveLength(2);
+      expect(screen.getByTestId("session-terminal-dock-s1")).toBeInTheDocument();
+      expect(screen.getByTestId("session-terminal-dock-s2")).toBeInTheDocument();
+      expect(screen.getByText("ChatView:s2")).toBeInTheDocument();
+    });
+
     it("renders TaskPanel when session active and taskPanelOpen", () => {
       // When taskPanelOpen is true and we have a session, the task panel should appear.
       (parseHash as ReturnType<typeof vi.fn>).mockReturnValue({ page: "session", sessionId: "s1" });
@@ -348,6 +376,22 @@ describe("App", () => {
       await waitFor(() => {
         expect(screen.getByTestId("settings-page")).toBeInTheDocument();
       });
+    });
+
+    it("keeps session terminal dock mounted while viewing settings page", async () => {
+      (parseHash as ReturnType<typeof vi.fn>).mockReturnValue({ page: "settings" });
+      setStoreValues({
+        currentSessionId: "s1",
+        quickTerminalOpen: true,
+        quickTerminalTabs: [{ id: "tab-s1", label: "Terminal", cwd: "/repo", sessionId: "s1" }],
+      });
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("settings-page")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("session-terminal-dock-s1")).toBeInTheDocument();
     });
 
     it("renders PromptsPage for prompts route", async () => {
