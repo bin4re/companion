@@ -4,6 +4,28 @@ import { api } from "../api.js";
 import { DiffViewer } from "./DiffViewer.js";
 
 type FileChangeStatus = "created" | "updated" | "deleted";
+type ChangedFileItem = { abs: string; rel: string; status: FileChangeStatus };
+type ChangedFilesCacheEntry = { files: ChangedFileItem[]; ts: number };
+type FileDiffCacheEntry = { diff: string; ts: number };
+
+const CHANGED_FILES_CACHE_MAX = 80;
+const FILE_DIFF_CACHE_MAX = 200;
+const CACHE_TTL_MS = 10_000;
+const CACHE_ENABLED = import.meta.env.MODE !== "test";
+const changedFilesCache = new Map<string, ChangedFilesCacheEntry>();
+const fileDiffCache = new Map<string, FileDiffCacheEntry>();
+
+function setCacheWithLimit<K, V>(cache: Map<K, V>, key: K, value: V, limit: number): void {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+  cache.set(key, value);
+  if (cache.size <= limit) return;
+  const oldestKey = cache.keys().next().value as K | undefined;
+  if (oldestKey !== undefined) {
+    cache.delete(oldestKey);
+  }
+}
 
 function normalizePathForCompare(path: string): string {
   let normalized = path.replace(/\\/g, "/");
@@ -11,6 +33,9 @@ function normalizePathForCompare(path: string): string {
     normalized = `//${normalized.slice("//?/UNC/".length)}`;
   } else if (normalized.startsWith("//?/")) {
     normalized = normalized.slice("//?/".length);
+  }
+  if (/^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//")) {
+    normalized = normalized.toLowerCase();
   }
   return normalized;
 }
@@ -48,28 +73,39 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   const changedFilesTick = useStore((s) => s.changedFilesTick.get(sessionId) ?? 0);
 
   const cwd = session?.cwd || sdkSession?.cwd;
+  const repoRoot = session?.repo_root;
+  const queryCwd = repoRoot || cwd;
+  const scopeCwd = cwd || repoRoot;
 
   const [diffContent, setDiffContent] = useState<string>("");
   const [diffLoading, setDiffLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 640 : true,
   );
-  const [gitFiles, setGitFiles] = useState<Array<{ abs: string; rel: string; status: FileChangeStatus }>>([]);
+  const [gitFiles, setGitFiles] = useState<ChangedFileItem[]>([]);
 
   const setGitChangedFilesCount = useStore((s) => s.setGitChangedFilesCount);
 
   // Fetch changed file list from git whenever cwd, base, or agent edits change
   useEffect(() => {
-    if (!cwd) return;
+    if (!queryCwd || !scopeCwd) return;
     let cancelled = false;
-    api.getChangedFiles(cwd, diffBase).then(({ files }) => {
+    const normalizedQueryCwd = normalizePathForCompare(queryCwd).replace(/\/+$/, "");
+    const normalizedScopeCwd = normalizePathForCompare(scopeCwd).replace(/\/+$/, "");
+    const cacheKey = `${sessionId}::${normalizedQueryCwd}::${normalizedScopeCwd}::${diffBase}::${changedFilesTick}`;
+    const cachedFiles = changedFilesCache.get(cacheKey);
+    if (CACHE_ENABLED && cachedFiles && (Date.now() - cachedFiles.ts) < CACHE_TTL_MS) {
+      setGitFiles(cachedFiles.files);
+      setGitChangedFilesCount(sessionId, cachedFiles.files.length);
+    }
+
+    api.getChangedFiles(queryCwd, diffBase).then(({ files }) => {
       if (cancelled) return;
-      const normalizedCwd = normalizePathForCompare(cwd).replace(/\/+$/, "");
-      const cwdPrefix = `${normalizedCwd}/`;
+      const cwdPrefix = `${normalizedScopeCwd}/`;
       const result = files
         .filter((f) => {
           const normalizedPath = normalizePathForCompare(f.path);
-          return normalizedPath === normalizedCwd || normalizedPath.startsWith(cwdPrefix);
+          return normalizedPath === normalizedScopeCwd || normalizedPath.startsWith(cwdPrefix);
         })
         .map((f) => ({
           abs: f.path,
@@ -83,10 +119,13 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
         }))
         .sort((a, b) => a.rel.localeCompare(b.rel));
       setGitFiles(result);
+      if (CACHE_ENABLED) {
+        setCacheWithLimit(changedFilesCache, cacheKey, { files: result, ts: Date.now() }, CHANGED_FILES_CACHE_MAX);
+      }
       setGitChangedFilesCount(sessionId, result.length);
     }).catch(() => { if (!cancelled) { setGitFiles([]); setGitChangedFilesCount(sessionId, 0); } });
     return () => { cancelled = true; };
-  }, [cwd, diffBase, changedFilesTick, sessionId, setGitChangedFilesCount]);
+  }, [queryCwd, scopeCwd, diffBase, changedFilesTick, sessionId, setGitChangedFilesCount]);
 
   const relativeChangedFiles = gitFiles;
 
@@ -110,13 +149,24 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
       setDiffContent("");
       return;
     }
+    const cacheKey = `${sessionId}::${diffBase}::${normalizePathForCompare(selectedFile)}::${changedFilesTick}`;
+    const cachedDiff = fileDiffCache.get(cacheKey);
+    const hasFreshCachedDiff = CACHE_ENABLED && !!cachedDiff && (Date.now() - cachedDiff.ts) < CACHE_TTL_MS;
+    if (hasFreshCachedDiff && cachedDiff) {
+      setDiffContent(cachedDiff.diff);
+      setDiffLoading(false);
+    }
+
     let cancelled = false;
-    setDiffLoading(true);
+    if (!hasFreshCachedDiff) setDiffLoading(true);
     api
       .getFileDiff(selectedFile, diffBase)
       .then((res) => {
         if (!cancelled) {
           setDiffContent(res.diff);
+          if (CACHE_ENABLED) {
+            setCacheWithLimit(fileDiffCache, cacheKey, { diff: res.diff, ts: Date.now() }, FILE_DIFF_CACHE_MAX);
+          }
           setDiffLoading(false);
         }
       })
@@ -127,7 +177,7 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
         }
       });
     return () => { cancelled = true; };
-  }, [selectedFile, diffBase]);
+  }, [selectedFile, diffBase, sessionId, changedFilesTick]);
 
   const handleFileSelect = useCallback(
     (path: string) => {
@@ -140,15 +190,15 @@ export function DiffPanel({ sessionId }: { sessionId: string }) {
   );
 
   const selectedRelPath = useMemo(() => {
-    if (!selectedFile || !cwd) return selectedFile;
-    const normalizedCwd = normalizePathForCompare(cwd).replace(/\/+$/, "");
+    if (!selectedFile || !scopeCwd) return selectedFile;
+    const normalizedCwd = normalizePathForCompare(scopeCwd).replace(/\/+$/, "");
     const normalizedSelected = normalizePathForCompare(selectedFile);
     return normalizedSelected.startsWith(`${normalizedCwd}/`)
       ? normalizedSelected.slice(normalizedCwd.length + 1)
       : normalizedSelected;
-  }, [selectedFile, cwd]);
+  }, [selectedFile, scopeCwd]);
 
-  if (!cwd) {
+  if (!queryCwd || !scopeCwd) {
     return (
       <div className="flex-1 flex items-center justify-center h-full">
         <p className="text-cc-muted text-sm">Waiting for session to initialize...</p>

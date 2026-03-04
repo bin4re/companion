@@ -14,6 +14,8 @@ import { DiffPanel } from "./components/DiffPanel.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
 import { SessionLaunchOverlay } from "./components/SessionLaunchOverlay.js";
 import { SessionTerminalDock } from "./components/SessionTerminalDock.js";
+
+const DIFF_COUNT_POLL_INTERVAL_MS = 8_000;
 import { SessionEditorPane } from "./components/SessionEditorPane.js";
 import { UpdateOverlay } from "./components/UpdateOverlay.js";
 
@@ -44,6 +46,19 @@ function useHash() {
     (cb) => { window.addEventListener("hashchange", cb); return () => window.removeEventListener("hashchange", cb); },
     () => window.location.hash,
   );
+}
+
+function normalizePathForCompare(path: string): string {
+  let normalized = path.replace(/\\/g, "/");
+  if (normalized.startsWith("//?/UNC/")) {
+    normalized = `//${normalized.slice("//?/UNC/".length)}`;
+  } else if (normalized.startsWith("//?/")) {
+    normalized = normalized.slice("//?/".length);
+  }
+  if (/^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//")) {
+    normalized = normalized.toLowerCase();
+  }
+  return normalized;
 }
 
 export default function App() {
@@ -148,17 +163,59 @@ export default function App() {
       || s.sdkSessions.find((sdk) => sdk.sessionId === currentSessionId)?.cwd
       || null;
   });
+  const sessionRepoRoot = useStore((s) => {
+    if (!currentSessionId) return null;
+    return s.sessions.get(currentSessionId)?.repo_root || null;
+  });
   useEffect(() => {
-    if (!currentSessionId || !sessionCwd) return;
+    if (!currentSessionId) return;
+    const queryCwd = sessionRepoRoot || sessionCwd;
+    const scopeCwd = sessionCwd || sessionRepoRoot;
+    if (!queryCwd || !scopeCwd) return;
+
     let cancelled = false;
-    api.getChangedFiles(sessionCwd, diffBase).then(({ files }) => {
-      if (cancelled) return;
-      const prefix = `${sessionCwd}/`;
-      const count = files.filter((f) => f.path === sessionCwd || f.path.startsWith(prefix)).length;
-      setGitChangedFilesCount(currentSessionId, count);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [currentSessionId, sessionCwd, diffBase, changedFilesTick, setGitChangedFilesCount]);
+    let inflight = false;
+    const countForScope = (files: Array<{ path: string; status: string }>) => {
+      const normalizedScopeCwd = normalizePathForCompare(scopeCwd).replace(/\/+$/, "");
+      const scopePrefix = `${normalizedScopeCwd}/`;
+      return files.filter((f) => {
+        const normalizedPath = normalizePathForCompare(f.path);
+        return normalizedPath === normalizedScopeCwd || normalizedPath.startsWith(scopePrefix);
+      }).length;
+    };
+
+    const refreshCount = () => {
+      if (inflight) return;
+      inflight = true;
+      api.getChangedFiles(queryCwd, diffBase).then(async ({ files }) => {
+        if (cancelled) return;
+        let count = countForScope(files);
+        const prevCount = useStore.getState().gitChangedFilesCount.get(currentSessionId) ?? 0;
+
+        // Guard against transient empty scans (common on Windows when git path probing jitters).
+        if (count === 0 && prevCount > 0) {
+          try {
+            const confirm = await api.getChangedFiles(queryCwd, diffBase);
+            if (cancelled) return;
+            count = countForScope(confirm.files);
+          } catch {
+            // keep first reading when confirmation fails
+          }
+        }
+
+        setGitChangedFilesCount(currentSessionId, count);
+      }).catch(() => {}).finally(() => {
+        inflight = false;
+      });
+    };
+
+    refreshCount();
+    const timer = setInterval(refreshCount, DIFF_COUNT_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [currentSessionId, sessionCwd, sessionRepoRoot, diffBase, changedFilesTick, setGitChangedFilesCount]);
 
   // Poll for updates
   useEffect(() => {
