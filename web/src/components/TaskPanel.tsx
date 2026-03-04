@@ -13,6 +13,13 @@ import { SectionErrorBoundary } from "./SectionErrorBoundary.js";
 
 const EMPTY_TASKS: TaskItem[] = [];
 const COUNTDOWN_REFRESH_MS = 30_000;
+const INTEGRATIONS_ENABLED_STORAGE_KEY = "cc-integrations-enabled";
+const INTEGRATIONS_ENABLED_EVENT = "companion:integrations-enabled-changed";
+
+function isSectionAllowedByIntegrations(sectionId: string, integrationsEnabled: boolean): boolean {
+  if (sectionId === "linear-issue" && !integrationsEnabled) return false;
+  return true;
+}
 
 function barColor(pct: number): string {
   if (pct > 80) return "bg-cc-error";
@@ -881,7 +888,9 @@ const SECTION_COMPONENTS: Record<string, ComponentType<{ sessionId: string }>> =
 
 // ─── Panel Config View ───────────────────────────────────────────────────────
 
-function TaskPanelConfigView({ isCodex }: { isCodex: boolean }) {
+function TaskPanelConfigView(
+  { isCodex, integrationsEnabled }: { isCodex: boolean; integrationsEnabled: boolean },
+) {
   const config = useStore((s) => s.taskPanelConfig);
   const toggleSectionEnabled = useStore((s) => s.toggleSectionEnabled);
   const moveSectionUp = useStore((s) => s.moveSectionUp);
@@ -896,6 +905,7 @@ function TaskPanelConfigView({ isCodex }: { isCodex: boolean }) {
     const def = SECTION_DEFINITIONS.find((d) => d.id === id);
     if (!def) return false;
     if (def.backends && !def.backends.includes(backendFilter)) return false;
+    if (!isSectionAllowedByIntegrations(id, integrationsEnabled)) return false;
     return true;
   });
 
@@ -1006,17 +1016,61 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
   const setTaskPanelOpen = useStore((s) => s.setTaskPanelOpen);
   const configMode = useStore((s) => s.taskPanelConfigMode);
   const config = useStore((s) => s.taskPanelConfig);
-
-  if (!taskPanelOpen) return null;
+  const [integrationsEnabled, setIntegrationsEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(INTEGRATIONS_ENABLED_STORAGE_KEY) === "true";
+  });
 
   const isCodex = (session?.backend_type || sdk?.backendType) === "codex";
   const backendFilter = isCodex ? "codex" : "claude";
+
+  useEffect(() => {
+    let active = true;
+    api.getSettings().then((settings) => {
+      if (!active) return;
+      const enabled = !!settings.integrationsEnabled;
+      setIntegrationsEnabled(enabled);
+      try {
+        window.localStorage.setItem(INTEGRATIONS_ENABLED_STORAGE_KEY, enabled ? "true" : "false");
+      } catch {
+        // ignore storage errors
+      }
+    }).catch(() => {
+      // Keep default value on settings probe failures.
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const onIntegrationsChanged = (event: Event) => {
+      const custom = event as CustomEvent<{ enabled?: boolean }>;
+      if (typeof custom.detail?.enabled === "boolean") {
+        setIntegrationsEnabled(custom.detail.enabled);
+      }
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== INTEGRATIONS_ENABLED_STORAGE_KEY) return;
+      setIntegrationsEnabled(event.newValue === "true");
+    };
+
+    window.addEventListener(INTEGRATIONS_ENABLED_EVENT, onIntegrationsChanged as EventListener);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(INTEGRATIONS_ENABLED_EVENT, onIntegrationsChanged as EventListener);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  if (!taskPanelOpen) return null;
 
   // Filter and order sections based on config + backend compatibility
   const applicableSections = config.order.filter((sectionId) => {
     const def = SECTION_DEFINITIONS.find((d) => d.id === sectionId);
     if (!def) return false;
     if (def.backends && !def.backends.includes(backendFilter)) return false;
+    if (!isSectionAllowedByIntegrations(sectionId, integrationsEnabled)) return false;
     return true;
   });
 
@@ -1051,7 +1105,7 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
       </div>
 
       {configMode ? (
-        <TaskPanelConfigView isCodex={isCodex} />
+        <TaskPanelConfigView isCodex={isCodex} integrationsEnabled={integrationsEnabled} />
       ) : (
         <>
           <div data-testid="task-panel-content" className="min-h-0 flex-1 overflow-y-auto">

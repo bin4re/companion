@@ -9,6 +9,7 @@ export function registerSettingsRoutes(api: Hono): void {
       anthropicApiKeyConfigured: !!settings.anthropicApiKey.trim(),
       anthropicModel: settings.anthropicModel || DEFAULT_ANTHROPIC_MODEL,
       linearApiKeyConfigured: !!settings.linearApiKey.trim(),
+      integrationsEnabled: !!settings.integrationsEnabled,
       linearAutoTransition: settings.linearAutoTransition,
       linearAutoTransitionStateName: settings.linearAutoTransitionStateName,
       linearArchiveTransition: settings.linearArchiveTransition,
@@ -33,6 +34,9 @@ export function registerSettingsRoutes(api: Hono): void {
     }
     if (body.linearApiKey !== undefined && typeof body.linearApiKey !== "string") {
       return c.json({ error: "linearApiKey must be a string" }, 400);
+    }
+    if (body.integrationsEnabled !== undefined && typeof body.integrationsEnabled !== "boolean") {
+      return c.json({ error: "integrationsEnabled must be a boolean" }, 400);
     }
     if (body.linearAutoTransition !== undefined && typeof body.linearAutoTransition !== "boolean") {
       return c.json({ error: "linearAutoTransition must be a boolean" }, 400);
@@ -74,7 +78,8 @@ export function registerSettingsRoutes(api: Hono): void {
       return c.json({ error: "updateChannel must be 'stable' or 'prerelease'" }, 400);
     }
     const hasAnyField = body.anthropicApiKey !== undefined || body.anthropicModel !== undefined
-      || body.linearApiKey !== undefined || body.linearAutoTransition !== undefined
+      || body.linearApiKey !== undefined || body.integrationsEnabled !== undefined
+      || body.linearAutoTransition !== undefined
       || body.linearAutoTransitionStateId !== undefined || body.linearAutoTransitionStateName !== undefined
       || body.linearArchiveTransition !== undefined || body.linearArchiveTransitionStateId !== undefined
       || body.linearArchiveTransitionStateName !== undefined
@@ -103,6 +108,10 @@ export function registerSettingsRoutes(api: Hono): void {
       linearApiKey:
         typeof body.linearApiKey === "string"
           ? body.linearApiKey.trim()
+          : undefined,
+      integrationsEnabled:
+        typeof body.integrationsEnabled === "boolean"
+          ? body.integrationsEnabled
           : undefined,
       linearAutoTransition:
         typeof body.linearAutoTransition === "boolean"
@@ -162,6 +171,7 @@ export function registerSettingsRoutes(api: Hono): void {
       anthropicApiKeyConfigured: !!settings.anthropicApiKey.trim(),
       anthropicModel: settings.anthropicModel || DEFAULT_ANTHROPIC_MODEL,
       linearApiKeyConfigured: !!settings.linearApiKey.trim(),
+      integrationsEnabled: !!settings.integrationsEnabled,
       linearAutoTransition: settings.linearAutoTransition,
       linearAutoTransitionStateName: settings.linearAutoTransitionStateName,
       linearArchiveTransition: settings.linearArchiveTransition,

@@ -72,6 +72,7 @@ vi.mock("./settings-manager.js", () => ({
     anthropicApiKey: "",
     anthropicModel: "claude-sonnet-4.6",
     linearApiKey: "",
+    integrationsEnabled: false,
     linearAutoTransition: false,
     linearAutoTransitionStateId: "",
     linearAutoTransitionStateName: "",
@@ -91,6 +92,7 @@ vi.mock("./settings-manager.js", () => ({
     anthropicApiKey: patch.anthropicApiKey ?? "",
     anthropicModel: patch.anthropicModel ?? "claude-sonnet-4.6",
     linearApiKey: patch.linearApiKey ?? "",
+    integrationsEnabled: patch.integrationsEnabled ?? false,
     linearAutoTransition: patch.linearAutoTransition ?? false,
     linearAutoTransitionStateId: patch.linearAutoTransitionStateId ?? "",
     linearAutoTransitionStateName: patch.linearAutoTransitionStateName ?? "",
@@ -2045,6 +2047,7 @@ describe("GET /api/settings", () => {
       anthropicApiKey: "or-secret",
       anthropicModel: "claude-sonnet-4.6",
       linearApiKey: "",
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateId: "",
       linearAutoTransitionStateName: "",
@@ -2069,6 +2072,7 @@ describe("GET /api/settings", () => {
       anthropicApiKeyConfigured: true,
       anthropicModel: "claude-sonnet-4.6",
       linearApiKeyConfigured: false,
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateName: "",
     linearArchiveTransition: false,
@@ -2088,6 +2092,7 @@ describe("GET /api/settings", () => {
       anthropicApiKey: "",
       anthropicModel: "openai/gpt-4o-mini",
       linearApiKey: "lin_api_123",
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateId: "",
       linearAutoTransitionStateName: "",
@@ -2112,6 +2117,7 @@ describe("GET /api/settings", () => {
       anthropicApiKeyConfigured: false,
       anthropicModel: "openai/gpt-4o-mini",
       linearApiKeyConfigured: true,
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateName: "",
     linearArchiveTransition: false,
@@ -2133,6 +2139,7 @@ describe("PUT /api/settings", () => {
       anthropicApiKey: "new-key",
       anthropicModel: "claude-sonnet-4.6",
       linearApiKey: "",
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateId: "",
       linearAutoTransitionStateName: "",
@@ -2160,6 +2167,7 @@ describe("PUT /api/settings", () => {
       anthropicApiKey: "new-key",
       anthropicModel: undefined,
       linearApiKey: undefined,
+      integrationsEnabled: undefined,
       linearAutoTransition: undefined,
       linearAutoTransitionStateId: undefined,
       linearAutoTransitionStateName: undefined,
@@ -2179,6 +2187,7 @@ describe("PUT /api/settings", () => {
       anthropicApiKeyConfigured: true,
       anthropicModel: "claude-sonnet-4.6",
       linearApiKeyConfigured: false,
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateName: "",
     linearArchiveTransition: false,
@@ -2198,6 +2207,7 @@ describe("PUT /api/settings", () => {
       anthropicApiKey: "trimmed-key",
       anthropicModel: "claude-sonnet-4.6",
       linearApiKey: "lin_api_trimmed",
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateId: "",
       linearAutoTransitionStateName: "",
@@ -2225,6 +2235,7 @@ describe("PUT /api/settings", () => {
       anthropicApiKey: "trimmed-key",
       anthropicModel: "claude-sonnet-4.6",
       linearApiKey: "lin_api_trimmed",
+      integrationsEnabled: undefined,
       linearAutoTransition: undefined,
       linearAutoTransitionStateId: undefined,
       linearAutoTransitionStateName: undefined,
@@ -2246,6 +2257,7 @@ describe("PUT /api/settings", () => {
       anthropicApiKey: "existing-key",
       anthropicModel: "openai/gpt-4o-mini",
       linearApiKey: "lin_api_existing",
+      integrationsEnabled: false,
       linearAutoTransition: false,
       linearAutoTransitionStateId: "",
       linearAutoTransitionStateName: "",
@@ -2273,6 +2285,7 @@ describe("PUT /api/settings", () => {
       anthropicApiKey: undefined,
       anthropicModel: "openai/gpt-4o-mini",
       linearApiKey: undefined,
+      integrationsEnabled: undefined,
       linearAutoTransition: undefined,
       linearAutoTransitionStateId: undefined,
       linearAutoTransitionStateName: undefined,
@@ -2299,6 +2312,18 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json).toEqual({ error: "linearApiKey must be a string" });
+  });
+
+  it("returns 400 for non-boolean integrationsEnabled", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ integrationsEnabled: "yes" }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ error: "integrationsEnabled must be a boolean" });
   });
 
   it("returns 400 for non-string model", async () => {
@@ -4652,6 +4677,16 @@ describe("POST /api/auth/verify", () => {
 // ---------------------------------------------------------------------------
 // Container status / images endpoints
 // ---------------------------------------------------------------------------
+
+describe("GET /api/runtime-info", () => {
+  it("returns server runtime platform information", async () => {
+    const res = await app.request("/api/runtime-info");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.platform).toBe(process.platform);
+    expect(data.isWindows).toBe(process.platform === "win32");
+  });
+});
 
 describe("GET /api/containers/status", () => {
   it("returns docker availability and version", async () => {

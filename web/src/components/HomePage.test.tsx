@@ -9,6 +9,7 @@ Element.prototype.scrollIntoView = vi.fn();
 const { mockApi, createSessionStreamMock, mockStoreState, mockStoreGetState } = vi.hoisted(() => ({
   mockApi: {
     getHome: vi.fn(),
+    getRuntimeInfo: vi.fn(),
     listEnvs: vi.fn(),
     getBackends: vi.fn(),
     getSettings: vi.fn(),
@@ -105,6 +106,7 @@ describe("HomePage", () => {
     mockStoreGetState.mockReturnValue(buildStoreMock());
 
     mockApi.getHome.mockResolvedValue({ home: "/home/ubuntu", cwd: "/repo" });
+    mockApi.getRuntimeInfo.mockResolvedValue({ platform: "linux", isWindows: false });
     mockApi.listEnvs.mockResolvedValue([]);
     mockApi.getBackends.mockResolvedValue([{ id: "claude", name: "Claude", available: true }]);
     mockApi.getSettings.mockResolvedValue({ linearApiKeyConfigured: true });
@@ -574,6 +576,21 @@ describe("HomePage", () => {
     expect(localStorage.getItem("cc-selected-env")).toBe("dev");
   });
 
+  it("hides environment selector when backend runtime is Windows", async () => {
+    mockApi.getRuntimeInfo.mockResolvedValueOnce({ platform: "win32", isWindows: true });
+    mockApi.listEnvs.mockResolvedValue([
+      { slug: "dev", name: "Development", variables: { API_KEY: "xxx" }, baseImage: "", imageTag: "" },
+    ]);
+
+    render(<HomePage />);
+    await screen.findByPlaceholderText("Fix a bug, build a feature, refactor code...");
+
+    await waitFor(() => {
+      expect(screen.queryByText("No env")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("Manage environments...")).not.toBeInTheDocument();
+  });
+
   it("opens env manager from the dropdown", async () => {
     // The "Manage environments..." link in the dropdown should open the EnvManager modal.
     mockApi.listEnvs.mockResolvedValue([]);
@@ -675,6 +692,36 @@ describe("HomePage", () => {
         }),
       );
     });
+  });
+
+  it("does not send envSlug when backend runtime is Windows", async () => {
+    const storeMock = buildStoreMock();
+    mockStoreGetState.mockReturnValue(storeMock);
+    localStorage.setItem("cc-selected-env", "dev");
+    mockApi.getRuntimeInfo.mockResolvedValueOnce({ platform: "win32", isWindows: true });
+    createSessionStreamMock.mockResolvedValue({
+      sessionId: "new-session-win",
+      state: "starting",
+      cwd: "/repo",
+    });
+
+    render(<HomePage />);
+    await screen.findByPlaceholderText("Fix a bug, build a feature, refactor code...");
+
+    await waitFor(() => {
+      expect(screen.queryByText("No env")).not.toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText("Fix a bug, build a feature, refactor code...");
+    fireEvent.change(textarea, { target: { value: "Create on windows backend" } });
+    fireEvent.click(screen.getByTitle("Send message"));
+
+    await waitFor(() => {
+      expect(createSessionStreamMock).toHaveBeenCalled();
+    });
+
+    const firstCallPayload = createSessionStreamMock.mock.calls[0]?.[0];
+    expect(firstCallPayload?.envSlug).toBeUndefined();
   });
 
   it("displays an error when session creation fails", async () => {

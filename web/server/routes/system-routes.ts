@@ -20,6 +20,13 @@ export function registerSystemRoutes(
     updateCheckStaleMs: number;
   },
 ): void {
+  api.get("/runtime-info", (c) => {
+    return c.json({
+      platform: process.platform,
+      isWindows: process.platform === "win32",
+    });
+  });
+
   api.get("/usage-limits", async (c) => {
     const limits = await getUsageLimits();
     return c.json(limits);

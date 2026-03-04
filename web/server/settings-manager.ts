@@ -15,6 +15,7 @@ export interface CompanionSettings {
   anthropicApiKey: string;
   anthropicModel: string;
   linearApiKey: string;
+  integrationsEnabled?: boolean;
   linearAutoTransition: boolean;
   linearAutoTransitionStateId: string;
   linearAutoTransitionStateName: string;
@@ -39,6 +40,7 @@ let settings: CompanionSettings = {
   anthropicApiKey: "",
   anthropicModel: DEFAULT_ANTHROPIC_MODEL,
   linearApiKey: "",
+  integrationsEnabled: false,
   linearAutoTransition: false,
   linearAutoTransitionStateId: "",
   linearAutoTransitionStateName: "",
@@ -63,6 +65,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
         ? raw.anthropicModel
         : DEFAULT_ANTHROPIC_MODEL,
     linearApiKey: typeof raw?.linearApiKey === "string" ? raw.linearApiKey : "",
+    integrationsEnabled: typeof raw?.integrationsEnabled === "boolean" ? raw.integrationsEnabled : false,
     linearAutoTransition: typeof raw?.linearAutoTransition === "boolean" ? raw.linearAutoTransition : false,
     linearAutoTransitionStateId: typeof raw?.linearAutoTransitionStateId === "string" ? raw.linearAutoTransitionStateId : "",
     linearAutoTransitionStateName: typeof raw?.linearAutoTransitionStateName === "string" ? raw.linearAutoTransitionStateName : "",
@@ -110,13 +113,14 @@ export function getSettings(): CompanionSettings {
 }
 
 export function updateSettings(
-  patch: Partial<Pick<CompanionSettings, "anthropicApiKey" | "anthropicModel" | "linearApiKey" | "linearAutoTransition" | "linearAutoTransitionStateId" | "linearAutoTransitionStateName" | "linearArchiveTransition" | "linearArchiveTransitionStateId" | "linearArchiveTransitionStateName" | "editorTabEnabled" | "aiValidationEnabled" | "aiValidationAutoApprove" | "aiValidationAutoDeny" | "terminalCustomShellEnabled" | "terminalCustomShellExecutable" | "updateChannel">>,
+  patch: Partial<Pick<CompanionSettings, "anthropicApiKey" | "anthropicModel" | "linearApiKey" | "integrationsEnabled" | "linearAutoTransition" | "linearAutoTransitionStateId" | "linearAutoTransitionStateName" | "linearArchiveTransition" | "linearArchiveTransitionStateId" | "linearArchiveTransitionStateName" | "editorTabEnabled" | "aiValidationEnabled" | "aiValidationAutoApprove" | "aiValidationAutoDeny" | "terminalCustomShellEnabled" | "terminalCustomShellExecutable" | "updateChannel">>,
 ): CompanionSettings {
   ensureLoaded();
   settings = normalize({
     anthropicApiKey: patch.anthropicApiKey ?? settings.anthropicApiKey,
     anthropicModel: patch.anthropicModel ?? settings.anthropicModel,
     linearApiKey: patch.linearApiKey ?? settings.linearApiKey,
+    integrationsEnabled: patch.integrationsEnabled ?? settings.integrationsEnabled,
     linearAutoTransition: patch.linearAutoTransition ?? settings.linearAutoTransition,
     linearAutoTransitionStateId: patch.linearAutoTransitionStateId ?? settings.linearAutoTransitionStateId,
     linearAutoTransitionStateName: patch.linearAutoTransitionStateName ?? settings.linearAutoTransitionStateName,

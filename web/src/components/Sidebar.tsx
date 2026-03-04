@@ -75,6 +75,9 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+const INTEGRATIONS_ENABLED_STORAGE_KEY = "cc-integrations-enabled";
+const INTEGRATIONS_ENABLED_EVENT = "companion:integrations-enabled-changed";
+
 export function Sidebar() {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -85,6 +88,11 @@ export function Sidebar() {
   const [archiveModalContainerized, setArchiveModalContainerized] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [isWindowsBackend, setIsWindowsBackend] = useState(false);
+  const [integrationsEnabled, setIntegrationsEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(INTEGRATIONS_ENABLED_STORAGE_KEY) === "true";
+  });
   const [hash, setHash] = useState(() => (typeof window !== "undefined" ? window.location.hash : ""));
   const editInputRef = useRef<HTMLInputElement>(null);
   const sessions = useStore((s) => s.sessions);
@@ -141,10 +149,72 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    api.getRuntimeInfo().then((info) => {
+      if (!active) return;
+      setIsWindowsBackend(info.isWindows);
+    }).catch(() => {
+      // Keep default behavior (show all nav items) when runtime probe fails.
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.getSettings().then((settings) => {
+      if (!active) return;
+      const enabled = !!settings.integrationsEnabled;
+      setIntegrationsEnabled(enabled);
+      try {
+        window.localStorage.setItem(INTEGRATIONS_ENABLED_STORAGE_KEY, enabled ? "true" : "false");
+      } catch {
+        // ignore storage errors
+      }
+    }).catch(() => {
+      // Keep default value when settings probe fails.
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const onIntegrationsChanged = (event: Event) => {
+      const custom = event as CustomEvent<{ enabled?: boolean }>;
+      if (typeof custom.detail?.enabled === "boolean") {
+        setIntegrationsEnabled(custom.detail.enabled);
+      }
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== INTEGRATIONS_ENABLED_STORAGE_KEY) return;
+      setIntegrationsEnabled(event.newValue === "true");
+    };
+
+    window.addEventListener(INTEGRATIONS_ENABLED_EVENT, onIntegrationsChanged as EventListener);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(INTEGRATIONS_ENABLED_EVENT, onIntegrationsChanged as EventListener);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     const onHashChange = () => setHash(window.location.hash);
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  const footerNavItems = useMemo(
+    () =>
+      NAV_ITEMS.filter((item) => {
+        if (isWindowsBackend && item.id === "environments") return false;
+        if (!integrationsEnabled && item.id === "integrations") return false;
+        return true;
+      }),
+    [isWindowsBackend, integrationsEnabled],
+  );
 
   function handleSelectSession(sessionId: string) {
     // Navigate to session hash — App.tsx hash effect handles setCurrentSession + connectSession
@@ -610,7 +680,7 @@ export function Sidebar() {
       {/* Footer */}
       <div className="p-2 pb-safe bg-cc-sidebar-footer">
         <div className="grid grid-cols-3 gap-1">
-          {NAV_ITEMS.map((item) => {
+          {footerNavItems.map((item) => {
             const isActive = item.activePages
               ? item.activePages.some((p) => route.page === p)
               : route.page === item.id;

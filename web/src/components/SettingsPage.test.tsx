@@ -98,12 +98,14 @@ import { SettingsPage } from "./SettingsPage.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   mockState = createMockState();
   window.location.hash = "#/settings";
   mockApi.getSettings.mockResolvedValue({
     anthropicApiKeyConfigured: true,
     anthropicModel: "claude-sonnet-4.6",
     linearApiKeyConfigured: false,
+    integrationsEnabled: false,
     linearAutoTransition: false,
     linearAutoTransitionStateName: "",
     editorTabEnabled: false,
@@ -115,6 +117,7 @@ beforeEach(() => {
     anthropicApiKeyConfigured: true,
     anthropicModel: "claude-sonnet-4.6",
     linearApiKeyConfigured: false,
+    integrationsEnabled: false,
     linearAutoTransition: false,
     linearAutoTransitionStateName: "",
     editorTabEnabled: false,
@@ -688,6 +691,39 @@ describe("SettingsPage", () => {
 
     const authButtons = screen.getAllByRole("button", { name: "Authentication" });
     expect(authButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("includes Integrations in category navigation", async () => {
+    render(<SettingsPage />);
+    await screen.findByText("Anthropic key configured");
+
+    const integrationButtons = screen.getAllByRole("button", { name: "Integrations" });
+    expect(integrationButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("toggles integrations and saves the setting", async () => {
+    mockApi.updateSettings.mockResolvedValueOnce({
+      anthropicApiKeyConfigured: true,
+      anthropicModel: "claude-sonnet-4.6",
+      linearApiKeyConfigured: false,
+      integrationsEnabled: true,
+      linearAutoTransition: false,
+      linearAutoTransitionStateName: "",
+      editorTabEnabled: false,
+      terminalCustomShellEnabled: false,
+      terminalCustomShellExecutable: "",
+      updateChannel: "stable",
+    });
+
+    render(<SettingsPage />);
+    await screen.findByText("Anthropic key configured");
+
+    fireEvent.click(screen.getByRole("button", { name: /Enable Integrations/i }));
+
+    await waitFor(() => {
+      expect(mockApi.updateSettings).toHaveBeenCalledWith({ integrationsEnabled: true });
+    });
+    expect(screen.getByRole("button", { name: /Enable Integrations/i })).toHaveTextContent("On");
   });
 
   // ─── Verify button tests ──────────────────────────────────

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { SessionState, SdkSessionInfo } from "../types.js";
 
@@ -22,6 +22,8 @@ const mockApi = {
   unarchiveSession: vi.fn().mockResolvedValue({}),
   renameSession: vi.fn().mockResolvedValue({}),
   getArchiveInfo: vi.fn().mockResolvedValue({ hasLinkedIssue: false, issueNotDone: false }),
+  getRuntimeInfo: vi.fn().mockResolvedValue({ platform: "linux", isWindows: false }),
+  getSettings: vi.fn().mockResolvedValue({ integrationsEnabled: false }),
 };
 
 vi.mock("../api.js", () => ({
@@ -32,6 +34,8 @@ vi.mock("../api.js", () => ({
     unarchiveSession: (...args: unknown[]) => mockApi.unarchiveSession(...args),
     renameSession: (...args: unknown[]) => mockApi.renameSession(...args),
     getArchiveInfo: (...args: unknown[]) => mockApi.getArchiveInfo(...args),
+    getRuntimeInfo: (...args: unknown[]) => mockApi.getRuntimeInfo(...args),
+    getSettings: (...args: unknown[]) => mockApi.getSettings(...args),
   },
 }));
 
@@ -150,6 +154,10 @@ import { Sidebar } from "./Sidebar.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  localStorage.setItem("cc-integrations-enabled", "false");
+  mockApi.getRuntimeInfo.mockResolvedValue({ platform: "linux", isWindows: false });
+  mockApi.getSettings.mockResolvedValue({ integrationsEnabled: false });
   mockState = createMockState();
   window.location.hash = "";
 });
@@ -439,13 +447,28 @@ describe("Sidebar", () => {
     expect(window.location.hash).toBe("#/environments");
   });
 
+  it("hides Environments nav when backend reports Windows", async () => {
+    mockApi.getRuntimeInfo.mockResolvedValueOnce({ platform: "win32", isWindows: true });
+    render(<Sidebar />);
+    await waitFor(() => {
+      expect(screen.queryByTitle("Environments")).not.toBeInTheDocument();
+    });
+  });
+
   it("navigates to settings page when Settings is clicked", () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByTitle("Settings"));
     expect(window.location.hash).toBe("#/settings");
   });
 
-  it("navigates to integrations page when Integrations is clicked", () => {
+  it("hides Integrations nav by default when integrations are disabled", () => {
+    render(<Sidebar />);
+    expect(screen.queryByTitle("Integrations")).not.toBeInTheDocument();
+  });
+
+  it("navigates to integrations page when Integrations is enabled", () => {
+    localStorage.setItem("cc-integrations-enabled", "true");
+    mockApi.getSettings.mockResolvedValueOnce({ integrationsEnabled: true });
     render(<Sidebar />);
     fireEvent.click(screen.getByTitle("Integrations"));
     expect(window.location.hash).toBe("#/integrations");
@@ -743,6 +766,8 @@ describe("Sidebar", () => {
   });
 
   it("footer nav uses a 3x2 grid layout with short labels", () => {
+    localStorage.setItem("cc-integrations-enabled", "true");
+    mockApi.getSettings.mockResolvedValueOnce({ integrationsEnabled: true });
     const { container } = render(<Sidebar />);
     // The grid container should exist
     const gridElement = container.querySelector(".grid.grid-cols-3");
@@ -828,6 +853,8 @@ describe("Sidebar", () => {
 
   it("footer nav buttons have title attributes for accessibility", () => {
     // Verifies footer nav buttons have title attributes for tooltip/screen reader support.
+    localStorage.setItem("cc-integrations-enabled", "true");
+    mockApi.getSettings.mockResolvedValueOnce({ integrationsEnabled: true });
     render(<Sidebar />);
     // Footer nav items should have descriptive titles from NAV_ITEMS
     expect(screen.getByTitle("Prompts")).toBeInTheDocument();
@@ -1564,6 +1591,8 @@ describe("Sidebar", () => {
   it("integrations nav button shows active for both integrations and integration-linear pages", () => {
     // Verifies that the Integrations nav button correctly uses activePages
     // to highlight for sub-pages like integration-linear.
+    localStorage.setItem("cc-integrations-enabled", "true");
+    mockApi.getSettings.mockResolvedValueOnce({ integrationsEnabled: true });
     window.location.hash = "#/integrations";
     render(<Sidebar />);
 

@@ -13,6 +13,7 @@ const CATEGORIES = [
   { id: "terminal", label: "Terminal" },
   { id: "authentication", label: "Authentication" },
   { id: "notifications", label: "Notifications" },
+  { id: "integrations", label: "Integrations" },
   { id: "anthropic", label: "Anthropic" },
   { id: "ai-validation", label: "AI Validation" },
   { id: "updates", label: "Updates" },
@@ -22,6 +23,8 @@ const CATEGORIES = [
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
 const TERMINAL_SHELL_PLACEHOLDER = String.raw`Example: C:\ProgramFiles\PowerShell\7\pwsh.exe`;
+const INTEGRATIONS_ENABLED_STORAGE_KEY = "cc-integrations-enabled";
+const INTEGRATIONS_ENABLED_EVENT = "companion:integrations-enabled-changed";
 
 export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const isWindowsClient =
@@ -67,6 +70,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
   const [terminalSaving, setTerminalSaving] = useState(false);
   const [terminalSaved, setTerminalSaved] = useState(false);
   const [terminalError, setTerminalError] = useState("");
+  const [integrationsEnabled, setIntegrationsEnabled] = useState(false);
 
   // Auth section state
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -79,6 +83,16 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
 
   const contentRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  const publishIntegrationsEnabled = useCallback((enabled: boolean) => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(INTEGRATIONS_ENABLED_STORAGE_KEY, enabled ? "true" : "false");
+    } catch {
+      // ignore storage errors
+    }
+    window.dispatchEvent(new CustomEvent(INTEGRATIONS_ENABLED_EVENT, { detail: { enabled } }));
+  }, []);
 
   // IntersectionObserver to track which section is in view
   useEffect(() => {
@@ -144,6 +158,9 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
           typeof s.terminalCustomShellExecutable === "string" ? s.terminalCustomShellExecutable : "",
         );
         setTerminalEditing(false);
+        const nextIntegrationsEnabled = typeof s.integrationsEnabled === "boolean" ? s.integrationsEnabled : false;
+        setIntegrationsEnabled(nextIntegrationsEnabled);
+        publishIntegrationsEnabled(nextIntegrationsEnabled);
         if (s.updateChannel === "stable" || s.updateChannel === "prerelease") setUpdateChannel(s.updateChannel);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
@@ -151,7 +168,7 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
 
     // Fetch auth token in parallel (non-blocking)
     api.getAuthToken().then((res) => setAuthToken(res.token)).catch(() => {});
-  }, []);
+  }, [publishIntegrationsEnabled]);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
@@ -256,6 +273,19 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
       if (field === "aiValidationEnabled") setAiValidationEnabled(current);
       else if (field === "aiValidationAutoApprove") setAiValidationAutoApprove(current);
       else setAiValidationAutoDeny(current);
+    }
+  }
+
+  async function toggleIntegrations() {
+    const previous = integrationsEnabled;
+    const next = !previous;
+    setIntegrationsEnabled(next);
+    publishIntegrationsEnabled(next);
+    try {
+      await api.updateSettings({ integrationsEnabled: next });
+    } catch {
+      setIntegrationsEnabled(previous);
+      publishIntegrationsEnabled(previous);
     }
   }
 
@@ -670,6 +700,24 @@ export function SettingsPage({ embedded = false }: SettingsPageProps) {
                     <span className="text-xs text-cc-muted">{notificationDesktop ? "On" : "Off"}</span>
                   </button>
                 )}
+              </div>
+            </section>
+
+            {/* Integrations */}
+            <section id="integrations" ref={setSectionRef("integrations")}>
+              <h2 className="text-sm font-semibold text-cc-fg mb-4">Integrations</h2>
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => { void toggleIntegrations(); }}
+                  className="w-full flex items-center justify-between px-3 py-3 min-h-[44px] rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+                >
+                  <span>Enable Integrations</span>
+                  <span className="text-xs text-cc-muted">{integrationsEnabled ? "On" : "Off"}</span>
+                </button>
+                <p className="text-xs text-cc-muted">
+                  Controls the sidebar Integrations item and the Link Linear issue section in the session Context panel.
+                </p>
               </div>
             </section>
 

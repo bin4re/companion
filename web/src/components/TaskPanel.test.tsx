@@ -5,6 +5,7 @@ import { getDefaultConfig, type TaskPanelConfig } from "./task-panel-sections.js
 
 vi.mock("../api.js", () => ({
   api: {
+    getSettings: vi.fn(),
     getSessionUsageLimits: vi.fn().mockRejectedValue(new Error("skip")),
     getPRStatus: vi.fn().mockRejectedValue(new Error("skip")),
     getLinkedLinearIssue: vi.fn().mockResolvedValue({ issue: null }),
@@ -125,13 +126,33 @@ vi.mock("../store.js", () => ({
 
 import { TaskPanel, GitHubPRDisplay, CodexRateLimitsSection, CodexTokenDetailsSection } from "./TaskPanel.js";
 import { api } from "../api.js";
-import type { GitHubPRInfo } from "../api.js";
+import type { AppSettings, GitHubPRInfo } from "../api.js";
 
 // Typed reference to the mocked api for per-test overrides
 const mockApi = vi.mocked(api);
+const baseAppSettings: AppSettings = {
+  anthropicApiKeyConfigured: false,
+  anthropicModel: "claude-sonnet-4.6",
+  linearApiKeyConfigured: false,
+  integrationsEnabled: true,
+  linearAutoTransition: false,
+  linearAutoTransitionStateName: "",
+  linearArchiveTransition: false,
+  linearArchiveTransitionStateName: "",
+  editorTabEnabled: false,
+  aiValidationEnabled: false,
+  aiValidationAutoApprove: true,
+  aiValidationAutoDeny: true,
+  terminalCustomShellEnabled: false,
+  terminalCustomShellExecutable: "",
+  updateChannel: "stable",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  localStorage.setItem("cc-integrations-enabled", "true");
+  mockApi.getSettings.mockResolvedValue(baseAppSettings);
   resetStore();
 });
 
@@ -217,6 +238,15 @@ describe("TaskPanel", () => {
     expect(screen.getByTestId("toggle-github-pr")).toBeInTheDocument();
     expect(screen.getByTestId("toggle-linear-issue")).toBeInTheDocument();
     expect(screen.getByTestId("toggle-mcp-servers")).toBeInTheDocument();
+  });
+
+  it("hides Linear issue section when integrations are disabled", () => {
+    localStorage.setItem("cc-integrations-enabled", "false");
+    mockApi.getSettings.mockResolvedValueOnce({ ...baseAppSettings, integrationsEnabled: false });
+    resetStore({ taskPanelConfigMode: true });
+    render(<TaskPanel sessionId="s1" />);
+    expect(screen.queryByTestId("toggle-linear-issue")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("config-section-linear-issue")).not.toBeInTheDocument();
   });
 
   it("calls toggleSectionEnabled when toggle is clicked", () => {

@@ -200,6 +200,11 @@ export interface ContainerStatus {
   version: string | null;
 }
 
+export interface RuntimeInfo {
+  platform: string;
+  isWindows: boolean;
+}
+
 export interface CloudProviderPlan {
   provider: "modal";
   sessionId: string;
@@ -375,6 +380,7 @@ export interface AppSettings {
   anthropicApiKeyConfigured: boolean;
   anthropicModel: string;
   linearApiKeyConfigured: boolean;
+  integrationsEnabled?: boolean;
   linearAutoTransition: boolean;
   linearAutoTransitionStateName: string;
   linearArchiveTransition: boolean;
@@ -856,6 +862,7 @@ export const api = {
     anthropicApiKey?: string;
     anthropicModel?: string;
     linearApiKey?: string;
+    integrationsEnabled?: boolean;
     linearAutoTransition?: boolean;
     linearAutoTransitionStateId?: string;
     linearAutoTransitionStateName?: string;
@@ -961,6 +968,7 @@ export const api = {
     get<BackendModelInfo[]>(`/backends/${encodeURIComponent(backendId)}/models`),
 
   // Containers
+  getRuntimeInfo: () => get<RuntimeInfo>("/runtime-info"),
   getContainerStatus: () => get<ContainerStatus>("/containers/status"),
   getContainerImages: () => get<string[]>("/containers/images"),
 
